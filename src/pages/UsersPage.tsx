@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Users, Shield, ChevronDown, UserPlus, Mail, Clock, X, Check } from 'lucide-react';
+import { Users, Shield, ChevronDown, UserPlus, Mail, Clock, X, Check, KeyRound } from 'lucide-react';
 import type { Profile, UserRole } from '@/types';
 
 const ROLES: UserRole[] = ['admin', 'researcher', 'technician', 'read_only'];
@@ -27,26 +27,27 @@ const ROLE_LABEL: Record<UserRole, string> = {
   read_only: 'Solo lectura',
 };
 
-const PERMISSIONS: { action: string; label: string }[] = [
-  { action: 'view_samples', label: 'Ver muestras' },
-  { action: 'create_samples', label: 'Crear muestras' },
-  { action: 'edit_samples', label: 'Editar muestras' },
-  { action: 'delete_samples', label: 'Eliminar muestras' },
-  { action: 'view_freezers', label: 'Ver congeladores' },
-  { action: 'manage_freezers', label: 'Gestionar congeladores' },
-  { action: 'view_boxes', label: 'Ver cajas' },
-  { action: 'manage_boxes', label: 'Gestionar cajas' },
-  { action: 'view_reports', label: 'Ver informes' },
-  { action: 'manage_users', label: 'Gestionar usuarios' },
+const PERMISSIONS: { action: string; label: string; category: string }[] = [
+  { action: 'view_samples', label: 'Ver muestras', category: 'Muestras' },
+  { action: 'create_samples', label: 'Crear muestras', category: 'Muestras' },
+  { action: 'edit_samples', label: 'Editar muestras', category: 'Muestras' },
+  { action: 'delete_samples', label: 'Eliminar muestras', category: 'Muestras' },
+  { action: 'view_freezers', label: 'Ver congeladores', category: 'Infraestructura' },
+  { action: 'manage_freezers', label: 'Gestionar congeladores', category: 'Infraestructura' },
+  { action: 'view_boxes', label: 'Ver cajas', category: 'Infraestructura' },
+  { action: 'manage_boxes', label: 'Gestionar cajas', category: 'Infraestructura' },
+  { action: 'view_reports', label: 'Ver informes', category: 'Sistema' },
+  { action: 'manage_users', label: 'Gestionar usuarios', category: 'Sistema' },
 ];
 
-// Role permission matrix (read-only reference)
 const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   admin: PERMISSIONS.map((p) => p.action),
-  researcher: ['view_samples', 'create_samples', 'edit_samples', 'view_freezers', 'view_boxes', 'manage_boxes', 'view_reports'],
+  researcher: ['view_samples', 'create_samples', 'edit_samples', 'delete_samples', 'view_freezers', 'manage_freezers', 'view_boxes', 'manage_boxes', 'view_reports'],
   technician: ['view_samples', 'create_samples', 'edit_samples', 'view_freezers', 'view_boxes', 'view_reports'],
   read_only: ['view_samples', 'view_freezers', 'view_boxes', 'view_reports'],
 };
+
+const PERMISSION_CATEGORIES = Array.from(new Set(PERMISSIONS.map((p) => p.category)));
 
 export function UsersPage() {
   const { user } = useAuth();
@@ -57,7 +58,10 @@ export function UsersPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('researcher');
   const [inviteError, setInviteError] = useState('');
-  const [showPermissions, setShowPermissions] = useState(false);
+  const [showPermMatrix, setShowPermMatrix] = useState(false);
+  const [permEditUser, setPermEditUser] = useState<Profile | null>(null);
+  const [permState, setPermState] = useState<Record<string, boolean>>({});
+  const [permSaving, setPermSaving] = useState(false);
 
   const isAdmin = user?.role === 'admin';
 
@@ -80,6 +84,23 @@ export function UsersPage() {
     enabled: !!user && isAdmin,
   });
 
+  const { data: allOverrides = [] } = useQuery({
+    queryKey: ['user-permissions'],
+    queryFn: async () => {
+      const { data } = await (supabase.from('user_permissions') as any).select('*');
+      return (data || []) as { user_id: string; action: string; granted: boolean }[];
+    },
+    enabled: !!user && isAdmin,
+  });
+
+  const getEffectivePermissions = (u: Profile): Record<string, boolean> => {
+    const base = ROLE_PERMISSIONS[u.role as UserRole] || [];
+    const result: Record<string, boolean> = {};
+    PERMISSIONS.forEach((p) => { result[p.action] = base.includes(p.action); });
+    allOverrides.filter((o) => o.user_id === u.id).forEach((o) => { result[o.action] = o.granted; });
+    return result;
+  };
+
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: UserRole }) => {
       const { error } = await (supabase.from('profiles') as any).update({ role }).eq('id', userId);
@@ -90,7 +111,6 @@ export function UsersPage() {
 
   const inviteMutation = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: UserRole }) => {
-      // Record invite in DB
       const { error } = await (supabase.from('invites') as any).insert([{
         email: email.trim().toLowerCase(),
         role,
@@ -119,6 +139,40 @@ export function UsersPage() {
 
   const openEdit = (u: Profile) => { setEditUser(u); setNewRole(u.role as UserRole); };
 
+  const openPermEdit = (u: Profile) => {
+    setPermState(getEffectivePermissions(u));
+    setPermEditUser(u);
+  };
+
+  const savePermissions = async () => {
+    if (!permEditUser) return;
+    setPermSaving(true);
+    try {
+      const roleDefaults = ROLE_PERMISSIONS[permEditUser.role as UserRole] || [];
+      for (const p of PERMISSIONS) {
+        const granted = permState[p.action] ?? false;
+        const defaultGranted = roleDefaults.includes(p.action);
+        if (granted !== defaultGranted) {
+          await (supabase.from('user_permissions') as any).upsert({
+            user_id: permEditUser.id,
+            action: p.action,
+            granted,
+            laboratory: permEditUser.laboratory,
+          }, { onConflict: 'user_id,action' });
+        } else {
+          await (supabase.from('user_permissions') as any)
+            .delete()
+            .eq('user_id', permEditUser.id)
+            .eq('action', p.action);
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
+      setPermEditUser(null);
+    } finally {
+      setPermSaving(false);
+    }
+  };
+
   const pendingInvites = invites.filter((i: any) => !i.accepted_at);
 
   return (
@@ -134,10 +188,10 @@ export function UsersPage() {
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => setShowPermissions(!showPermissions)}
+                  onClick={() => setShowPermMatrix(!showPermMatrix)}
                   className="border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
-                  <Shield className="w-4 h-4" /> Permisos
+                  <Shield className="w-4 h-4" /> Matriz de permisos
                 </Button>
                 <Button
                   onClick={() => { setInviteError(''); setShowInviteDialog(true); }}
@@ -159,9 +213,10 @@ export function UsersPage() {
           )}
 
           {/* Permissions matrix */}
-          {showPermissions && isAdmin && (
+          {showPermMatrix && isAdmin && (
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm overflow-x-auto">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Matriz de permisos por rol</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-1">Matriz de permisos por rol</h3>
+              <p className="text-xs text-gray-400 mb-4">Permisos predeterminados. Los permisos individuales se pueden editar por usuario.</p>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
@@ -174,17 +229,26 @@ export function UsersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {PERMISSIONS.map(({ action, label }) => (
-                    <tr key={action}>
-                      <td className="py-2 pr-6 text-gray-700 text-xs">{label}</td>
-                      {ROLES.map((r) => (
-                        <td key={r} className="text-center py-2 px-3">
-                          {ROLE_PERMISSIONS[r].includes(action)
-                            ? <Check className="w-4 h-4 text-green-500 mx-auto" />
-                            : <X className="w-4 h-4 text-gray-200 mx-auto" />}
+                  {PERMISSION_CATEGORIES.map((cat) => (
+                    <>
+                      <tr key={`cat-${cat}`}>
+                        <td colSpan={ROLES.length + 1} className="pt-3 pb-1">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{cat}</span>
                         </td>
+                      </tr>
+                      {PERMISSIONS.filter((p) => p.category === cat).map(({ action, label }) => (
+                        <tr key={action}>
+                          <td className="py-1.5 pr-6 text-gray-700 text-xs">{label}</td>
+                          {ROLES.map((r) => (
+                            <td key={r} className="text-center py-1.5 px-3">
+                              {ROLE_PERMISSIONS[r].includes(action)
+                                ? <Check className="w-4 h-4 text-green-500 mx-auto" />
+                                : <X className="w-4 h-4 text-gray-200 mx-auto" />}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
+                    </>
                   ))}
                 </tbody>
               </table>
@@ -248,51 +312,68 @@ export function UsersPage() {
                     <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3 hidden sm:table-cell">Laboratorio</th>
                     <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Rol</th>
                     <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3 hidden md:table-cell">Registrado</th>
-                    {isAdmin && <th className="px-4 py-3 w-24" />}
+                    {isAdmin && <th className="px-4 py-3 w-36" />}
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-                            <span className="text-xs font-bold text-white">
-                              {(u.full_name || u.email).charAt(0).toUpperCase()}
-                            </span>
+                  {users.map((u) => {
+                    const hasOverrides = allOverrides.some((o) => o.user_id === u.id);
+                    return (
+                      <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-bold text-white">
+                                {(u.full_name || u.email).charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{u.full_name || '—'}</p>
+                              <p className="text-xs text-gray-400">{u.email}</p>
+                              {u.id === user?.id && <span className="text-[10px] text-blue-600 font-medium">Tú</span>}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{u.full_name || '—'}</p>
-                            <p className="text-xs text-gray-400">{u.email}</p>
-                            {u.id === user?.id && <span className="text-[10px] text-blue-600 font-medium">Tú</span>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 hidden sm:table-cell">
-                        <span className="text-sm text-gray-600">{u.laboratory}</span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ROLE_COLORS[u.role as UserRole] || 'bg-gray-100 text-gray-500'}`}>
-                          {ROLE_LABEL[u.role as UserRole] || u.role}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 hidden md:table-cell text-sm text-gray-400">
-                        {new Date(u.created_at).toLocaleDateString('es-ES')}
-                      </td>
-                      {isAdmin && (
-                        <td className="px-4 py-3.5">
-                          {u.id !== user?.id && (
-                            <button
-                              onClick={() => openEdit(u)}
-                              className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
-                            >
-                              Rol <ChevronDown className="w-3 h-3" />
-                            </button>
-                          )}
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td className="px-4 py-3.5 hidden sm:table-cell">
+                          <span className="text-sm text-gray-600">{u.laboratory}</span>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ROLE_COLORS[u.role as UserRole] || 'bg-gray-100 text-gray-500'}`}>
+                              {ROLE_LABEL[u.role as UserRole] || u.role}
+                            </span>
+                            {hasOverrides && (
+                              <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full font-medium">Personalizado</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 hidden md:table-cell text-sm text-gray-400">
+                          {new Date(u.created_at).toLocaleDateString('es-ES')}
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3.5">
+                            {u.id !== user?.id && (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => openEdit(u)}
+                                  className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
+                                >
+                                  Rol <ChevronDown className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => openPermEdit(u)}
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-lg transition-colors"
+                                  title="Editar permisos"
+                                >
+                                  <KeyRound className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -324,10 +405,117 @@ export function UsersPage() {
                   </button>
                 ))}
               </div>
+              <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
+                Cambiar el rol actualiza los permisos predeterminados. Las personalizaciones individuales se mantienen.
+              </p>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setEditUser(null)} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
                 <Button onClick={() => updateRoleMutation.mutate({ userId: editUser.id, role: newRole })} disabled={updateRoleMutation.isPending || newRole === editUser.role} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
                   {updateRoleMutation.isPending ? 'Guardando...' : 'Guardar rol'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Permissions Dialog */}
+      <Dialog open={!!permEditUser} onOpenChange={(open) => !open && setPermEditUser(null)}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-blue-500" /> Permisos de usuario
+            </DialogTitle>
+          </DialogHeader>
+          {permEditUser && (
+            <div className="space-y-4 mt-2">
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-bold text-white">{(permEditUser.full_name || permEditUser.email).charAt(0).toUpperCase()}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{permEditUser.full_name}</p>
+                  <p className="text-xs text-gray-400">{permEditUser.email}</p>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ROLE_COLORS[permEditUser.role as UserRole]}`}>
+                    {ROLE_LABEL[permEditUser.role as UserRole]}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 text-blue-600">
+                Las casillas etiquetadas "Por defecto" reflejan el rol. Puedes activar o desactivar permisos individuales para este usuario.
+              </p>
+
+              {PERMISSION_CATEGORIES.map((cat) => (
+                <div key={cat} className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{cat}</p>
+                  {PERMISSIONS.filter((p) => p.category === cat).map((p) => {
+                    const isDefault = ROLE_PERMISSIONS[permEditUser.role as UserRole]?.includes(p.action) ?? false;
+                    const isGranted = permState[p.action] ?? false;
+                    const isOverridden = isGranted !== isDefault;
+                    return (
+                      <label
+                        key={p.action}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all select-none ${
+                          isGranted
+                            ? isOverridden ? 'border-amber-300 bg-amber-50' : 'border-green-200 bg-green-50'
+                            : isOverridden ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isGranted}
+                          onChange={(e) => setPermState((prev) => ({ ...prev, [p.action]: e.target.checked }))}
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className={`text-sm flex-1 ${isGranted ? 'text-gray-800' : 'text-gray-400'}`}>{p.label}</span>
+                        {isOverridden ? (
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isGranted ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
+                            {isGranted ? 'Añadido' : 'Revocado'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">{isDefault ? 'Por defecto' : ''}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+
+              <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                <span className="text-xs text-gray-400 mr-1">Ajuste rápido:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaults = ROLE_PERMISSIONS[permEditUser.role as UserRole] || [];
+                    const next: Record<string, boolean> = {};
+                    PERMISSIONS.forEach((p) => { next[p.action] = defaults.includes(p.action); });
+                    setPermState(next);
+                  }}
+                  className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-2 py-1 rounded transition-colors"
+                >
+                  Restablecer rol
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const next: Record<string, boolean> = {}; PERMISSIONS.forEach((p) => { next[p.action] = true; }); setPermState(next); }}
+                  className="text-xs text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded transition-colors"
+                >
+                  Todo permitido
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const next: Record<string, boolean> = {}; PERMISSIONS.forEach((p) => { next[p.action] = false; }); setPermState(next); }}
+                  className="text-xs text-red-400 hover:text-red-600 border border-red-200 px-2 py-1 rounded transition-colors"
+                >
+                  Sin acceso
+                </button>
+              </div>
+
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setPermEditUser(null)} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
+                <Button onClick={savePermissions} disabled={permSaving} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
+                  {permSaving ? 'Guardando...' : 'Guardar permisos'}
                 </Button>
               </div>
             </div>

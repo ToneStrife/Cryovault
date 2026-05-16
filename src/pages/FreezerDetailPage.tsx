@@ -11,11 +11,12 @@ import {
 } from '@/components/ui/dialog';
 import {
   DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors,
+  useDraggable, useDroppable,
 } from '@dnd-kit/core';
 import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import {
   ChevronLeft, Plus, Snowflake, MapPin, Thermometer, Grid3x3 as Grid3X3,
-  Pencil, Layers, Package, Upload, X, ChevronDown, ChevronRight,
+  Pencil, Layers, Package, Upload, X, ChevronDown, ChevronRight, LogOut,
 } from 'lucide-react';
 import type { Freezer, Box as BoxType, Rack } from '@/types';
 
@@ -37,6 +38,99 @@ function getOccupancyColor(pct: number) {
   if (pct >= 30) return 'bg-yellow-100 text-yellow-700';
   return 'bg-green-100 text-green-700';
 }
+
+// ── Draggable box card ────────────────────────────────────────────────────────
+function DraggableBoxCard({
+  box, freezerId, onEdit, onUnassign,
+}: {
+  box: BoxType;
+  freezerId: string;
+  onEdit: (b: BoxType) => void;
+  onUnassign: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: box.id });
+  const total = box.rows * box.columns;
+  const pct = Math.round((box.occupancy / total) * 100);
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`group bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-2 cursor-grab active:cursor-grabbing touch-none transition-all
+        ${isDragging ? 'opacity-40 shadow-none' : 'hover:shadow-sm hover:border-gray-300'}`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          {box.image_url && (
+            <img src={box.image_url} alt={box.name} className="w-8 h-8 rounded object-cover border border-gray-200 flex-shrink-0" />
+          )}
+          <div>
+            <p className="font-medium text-sm text-gray-900 leading-tight">{box.name}</p>
+            <p className="text-gray-400 text-xs mt-0.5">{box.rows}×{box.columns}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onUnassign(box.id); }}
+            className="p-1 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
+            title="Sacar de balda"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onEdit(box); }}
+            className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+            title="Editar caja"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${Math.min(box.columns, 9)}, 1fr)` }}>
+        {Array.from({ length: Math.min(box.rows * box.columns, 81) }).map((_, idx) => (
+          <div key={idx} className={`aspect-square rounded-sm ${idx < box.occupancy ? 'bg-green-400' : 'bg-gray-100'}`} />
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getOccupancyColor(pct)}`}>{pct}% llena</span>
+        <Link
+          to={`/freezers/${freezerId}/box/${box.id}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+        >
+          Abrir <Grid3X3 className="w-3 h-3" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ── Droppable zone ────────────────────────────────────────────────────────────
+function DroppableZone({
+  droppableId, children, className,
+}: {
+  droppableId: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`transition-colors ${isOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/40 rounded-xl' : ''} ${className ?? ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function FreezerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -106,16 +200,46 @@ export function FreezerDetailPage() {
       if (editBox) {
         let imageUrl = editBox.image_url;
         if (imageFile) imageUrl = await uploadBoxImage(editBox.id);
-        const { error } = await (supabase.from('boxes') as any).update({ name: data.name.trim(), description: data.description.trim() || null, rows: parseInt(data.rows) || 9, columns: parseInt(data.columns) || 9, box_type: data.box_type, shelf_number: shelfNum, rack_id: rackId, image_url: imageUrl }).eq('id', editBox.id);
+        const { error } = await (supabase.from('boxes') as any).update({
+          name: data.name.trim(),
+          description: data.description.trim() || null,
+          rows: parseInt(data.rows) || 9,
+          columns: parseInt(data.columns) || 9,
+          box_type: data.box_type,
+          shelf_number: shelfNum,
+          rack_id: rackId,
+          image_url: imageUrl,
+        }).eq('id', editBox.id);
         if (error) throw error;
       } else {
-        const payload = { freezer_id: id!, name: data.name.trim(), description: data.description.trim() || null, rows: parseInt(data.rows) || 9, columns: parseInt(data.columns) || 9, box_type: data.box_type, status: 'active' as const, occupancy: 0, archived: false, shelf_number: shelfNum, rack_id: rackId, image_url: null as string | null, created_by: user!.id };
+        const payload = {
+          freezer_id: id!,
+          name: data.name.trim(),
+          description: data.description.trim() || null,
+          rows: parseInt(data.rows) || 9,
+          columns: parseInt(data.columns) || 9,
+          box_type: data.box_type,
+          status: 'active' as const,
+          occupancy: 0,
+          archived: false,
+          shelf_number: shelfNum,
+          rack_id: rackId,
+          image_url: null as string | null,
+          created_by: user!.id,
+        };
         const { data: inserted, error } = await (supabase.from('boxes') as any).insert([payload]).select('id').single();
         if (error) throw error;
-        if (imageFile) { const imageUrl = await uploadBoxImage(inserted.id); await (supabase.from('boxes') as any).update({ image_url: imageUrl }).eq('id', inserted.id); }
+        if (imageFile) {
+          const imageUrl = await uploadBoxImage(inserted.id);
+          await (supabase.from('boxes') as any).update({ image_url: imageUrl }).eq('id', inserted.id);
+        }
       }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['boxes', id] }); queryClient.invalidateQueries({ queryKey: ['freezer-box-counts'] }); closeDialog(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['boxes', id] });
+      queryClient.invalidateQueries({ queryKey: ['freezer-box-counts'] });
+      closeDialog();
+    },
     onError: (e: any) => setFormError(e.message),
   });
 
@@ -129,19 +253,43 @@ export function FreezerDetailPage() {
 
   const addRackMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await (supabase.from('racks') as any).insert([{ freezer_id: id!, name: rackForm.name.trim(), shelf_number: parseInt(rackForm.shelf_number) || 1, rows: 1, columns: parseInt(rackForm.slot_count) || 5, slot_count: parseInt(rackForm.slot_count) || 5, created_by: user!.id }]);
+      const { error } = await (supabase.from('racks') as any).insert([{
+        freezer_id: id!,
+        name: rackForm.name.trim(),
+        shelf_number: parseInt(rackForm.shelf_number) || 1,
+        rows: 1,
+        columns: parseInt(rackForm.slot_count) || 5,
+        slot_count: parseInt(rackForm.slot_count) || 5,
+        created_by: user!.id,
+      }]);
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['racks', id] }); setShowRackDialog(false); setRackForm({ name: '', shelf_number: '1', slot_count: '5' }); setRackError(''); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['racks', id] });
+      setShowRackDialog(false);
+      setRackForm({ name: '', shelf_number: '1', slot_count: '5' });
+      setRackError('');
+    },
     onError: (e: any) => setRackError(e.message),
   });
 
-  const openCreate = () => { setEditBox(null); setForm({ ...emptyBoxForm, shelf_number: freezer ? '1' : '' }); setImageFile(null); setImagePreview(null); setFormError(''); setShowAdvanced(false); setShowDialog(true); };
-  const openEdit = (b: BoxType) => { setEditBox(b); setForm({ name: b.name, description: b.description || '', rows: String(b.rows), columns: String(b.columns), box_type: b.box_type, shelf_number: b.shelf_number ? String(b.shelf_number) : '', rack_id: b.rack_id || '' }); setImageFile(null); setImagePreview(b.image_url || null); setFormError(''); setShowAdvanced(false); setShowDialog(true); };
+  const openCreate = () => {
+    setEditBox(null);
+    setForm({ ...emptyBoxForm, shelf_number: freezer ? '1' : '' });
+    setImageFile(null); setImagePreview(null); setFormError(''); setShowAdvanced(false);
+    setShowDialog(true);
+  };
+  const openEdit = (b: BoxType) => {
+    setEditBox(b);
+    setForm({ name: b.name, description: b.description || '', rows: String(b.rows), columns: String(b.columns), box_type: b.box_type, shelf_number: b.shelf_number ? String(b.shelf_number) : '', rack_id: b.rack_id || '' });
+    setImageFile(null); setImagePreview(b.image_url || null); setFormError(''); setShowAdvanced(false);
+    setShowDialog(true);
+  };
   const closeDialog = () => { setShowDialog(false); setEditBox(null); setForm(emptyBoxForm); setImageFile(null); setImagePreview(null); };
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setFormError(''); if (!form.name.trim()) return setFormError('El nombre es obligatorio'); saveMutation.mutate(form); };
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setImageFile(file); setImagePreview(URL.createObjectURL(file)); };
   const toggleShelf = (n: number) => setCollapsedShelves((p) => ({ ...p, [n]: !p[n] }));
+  const handleUnassign = (boxId: string) => moveBoxMutation.mutate({ boxId, shelfNumber: null, rackId: null });
 
   const shelfCount = freezer?.shelf_count || 3;
   const shelves = Array.from({ length: shelfCount }, (_, i) => i + 1);
@@ -157,7 +305,6 @@ export function FreezerDetailPage() {
     setActiveBoxId(null);
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    // over.id format: "shelf_N" or "rack_RACKID"
     const overId = String(over.id);
     if (overId.startsWith('shelf_')) {
       const shelf = parseInt(overId.replace('shelf_', ''));
@@ -165,41 +312,9 @@ export function FreezerDetailPage() {
     } else if (overId.startsWith('rack_')) {
       const rack = racks.find((r) => r.id === overId.replace('rack_', ''));
       if (rack) moveBoxMutation.mutate({ boxId: String(active.id), shelfNumber: rack.shelf_number, rackId: rack.id });
+    } else if (overId === 'unassigned') {
+      moveBoxMutation.mutate({ boxId: String(active.id), shelfNumber: null, rackId: null });
     }
-  };
-
-  const renderBoxCard = (box: BoxType) => {
-    const total = box.rows * box.columns;
-    const pct = Math.round((box.occupancy / total) * 100);
-    return (
-      <div key={box.id} className="group bg-white border border-gray-200 rounded-xl p-3 hover:shadow-sm hover:border-gray-300 transition-all flex flex-col gap-2 cursor-grab active:cursor-grabbing">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            {box.image_url && <img src={box.image_url} alt={box.name} className="w-8 h-8 rounded object-cover border border-gray-200 flex-shrink-0" />}
-            <div>
-              <p className="font-medium text-sm text-gray-900 leading-tight">{box.name}</p>
-              <p className="text-gray-400 text-xs mt-0.5">{box.rows}×{box.columns}</p>
-            </div>
-          </div>
-          <button onClick={() => openEdit(box)} className="p-1 text-gray-400 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${Math.min(box.columns, 9)}, 1fr)` }}>
-          {Array.from({ length: Math.min(box.rows * box.columns, 81) }).map((_, idx) => (
-            <div key={idx} className={`aspect-square rounded-sm ${idx < box.occupancy ? 'bg-green-400' : 'bg-gray-100'}`} />
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getOccupancyColor(pct)}`}>{pct}% llena</span>
-          <Link to={`/freezers/${id}/box/${box.id}`} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
-            Abrir <Grid3X3 className="w-3 h-3" />
-          </Link>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -230,7 +345,11 @@ export function FreezerDetailPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => { setRackForm({ name: '', shelf_number: '1', slot_count: '5' }); setRackError(''); setShowRackDialog(true); }} className="border-gray-300 text-gray-700 hover:bg-gray-50">
+                <Button
+                  variant="outline"
+                  onClick={() => { setRackForm({ name: '', shelf_number: '1', slot_count: '5' }); setRackError(''); setShowRackDialog(true); }}
+                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
                   <Package className="w-4 h-4" /> Añadir rack
                 </Button>
                 <Button onClick={openCreate} className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white">
@@ -245,7 +364,9 @@ export function FreezerDetailPage() {
 
         <div className="px-4 lg:px-8 py-6">
           {isLoading ? (
-            <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-32 bg-gray-100 animate-pulse rounded-xl" />)}</div>
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-32 bg-gray-100 animate-pulse rounded-xl" />)}
+            </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
               <div className="space-y-4">
@@ -277,15 +398,19 @@ export function FreezerDetailPage() {
                                   <span className="text-xs font-medium text-gray-600">{rack.name}</span>
                                   <span className="text-xs text-gray-400">({rack.slot_count || rack.columns} slots)</span>
                                 </div>
-                                {rackBoxes.length === 0 ? (
-                                  <div data-droppable-id={`rack_${rack.id}`} className="ml-5 h-16 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-xs text-gray-300">
-                                    Arrastra una caja aquí
-                                  </div>
-                                ) : (
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 ml-5">
-                                    {rackBoxes.map(renderBoxCard)}
-                                  </div>
-                                )}
+                                <DroppableZone droppableId={`rack_${rack.id}`} className="ml-5 min-h-[4rem]">
+                                  {rackBoxes.length === 0 ? (
+                                    <div className="h-16 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-xs text-gray-300">
+                                      Arrastra una caja aquí
+                                    </div>
+                                  ) : (
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                      {rackBoxes.map((box) => (
+                                        <DraggableBoxCard key={box.id} box={box} freezerId={id!} onEdit={openEdit} onUnassign={handleUnassign} />
+                                      ))}
+                                    </div>
+                                  )}
+                                </DroppableZone>
                               </div>
                             );
                           })}
@@ -293,15 +418,19 @@ export function FreezerDetailPage() {
                           {(directBoxes.length > 0 || shelfRacks.length === 0) && (
                             <div className="space-y-2">
                               {shelfRacks.length > 0 && <span className="text-xs text-gray-400 font-medium">Directamente en la balda</span>}
-                              {directBoxes.length === 0 ? (
-                                <p className="text-xs text-gray-300 italic">
-                                  {shelfRacks.length === 0 ? 'Sin cajas ni racks en esta balda' : 'Sin cajas directas'}
-                                </p>
-                              ) : (
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                                  {directBoxes.map(renderBoxCard)}
-                                </div>
-                              )}
+                              <DroppableZone droppableId={`shelf_${shelfNum}`} className="min-h-[3rem]">
+                                {directBoxes.length === 0 ? (
+                                  <div className="h-12 border-2 border-dashed border-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-300">
+                                    {shelfRacks.length === 0 ? 'Sin cajas — arrastra aquí' : 'Sin cajas directas'}
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                    {directBoxes.map((box) => (
+                                      <DraggableBoxCard key={box.id} box={box} freezerId={id!} onEdit={openEdit} onUnassign={handleUnassign} />
+                                    ))}
+                                  </div>
+                                )}
+                              </DroppableZone>
                             </div>
                           )}
                         </div>
@@ -310,16 +439,28 @@ export function FreezerDetailPage() {
                   );
                 })}
 
-                {unassigned.length > 0 && (
+                {/* Unassigned section — also droppable */}
+                <DroppableZone droppableId="unassigned">
                   <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                    <div className="px-5 py-3.5 border-b border-gray-100">
-                      <span className="text-sm font-medium text-gray-500">Sin balda asignada ({unassigned.length})</span>
+                    <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-500">Sin balda asignada</span>
+                      <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">{unassigned.length}</span>
                     </div>
-                    <div className="p-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                      {unassigned.map(renderBoxCard)}
-                    </div>
+                    {unassigned.length === 0 ? (
+                      <div className="p-4">
+                        <div className="h-14 border-2 border-dashed border-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-300">
+                          Arrastra una caja aquí para quitarla de su balda
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                        {unassigned.map((box) => (
+                          <DraggableBoxCard key={box.id} box={box} freezerId={id!} onEdit={openEdit} onUnassign={handleUnassign} />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </DroppableZone>
 
                 {boxes.length === 0 && (
                   <div className="text-center py-16 text-gray-400">
@@ -331,9 +472,9 @@ export function FreezerDetailPage() {
                 )}
               </div>
 
-              <DragOverlay>
+              <DragOverlay dropAnimation={null}>
                 {activeBox && (
-                  <div className="bg-white border-2 border-blue-400 rounded-xl p-3 shadow-xl opacity-90 w-48">
+                  <div className="bg-white border-2 border-blue-400 rounded-xl p-3 shadow-xl w-48 rotate-2">
                     <p className="font-medium text-sm text-gray-900">{activeBox.name}</p>
                     <p className="text-xs text-gray-400">{activeBox.rows}×{activeBox.columns}</p>
                   </div>
@@ -448,7 +589,11 @@ export function FreezerDetailPage() {
             </div>
             <div className="flex gap-3 pt-1">
               <Button variant="outline" onClick={() => setShowRackDialog(false)} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
-              <Button disabled={addRackMutation.isPending || !rackForm.name.trim()} onClick={() => { if (!rackForm.name.trim()) return setRackError('El nombre es obligatorio'); addRackMutation.mutate(); }} className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white">
+              <Button
+                disabled={addRackMutation.isPending || !rackForm.name.trim()}
+                onClick={() => { if (!rackForm.name.trim()) return setRackError('El nombre es obligatorio'); addRackMutation.mutate(); }}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+              >
                 {addRackMutation.isPending ? 'Guardando...' : 'Añadir rack'}
               </Button>
             </div>

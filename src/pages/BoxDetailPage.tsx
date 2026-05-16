@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, ArrowUpFromLine, Upload } from 'lucide-react';
-import type { Box, Sample, SampleType, SampleStatus, UnitType } from '@/types';
+import type { Box, Sample, SampleType, SampleStatus, UnitType, Rack } from '@/types';
 
 const SAMPLE_TYPES: SampleType[] = [
   'tissue', 'blood', 'serum', 'plasma', 'urine', 'csf', 'saliva', 'dna', 'rna', 'protein', 'other',
@@ -175,6 +175,7 @@ export function BoxDetailPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editBoxImageRef = useRef<HTMLInputElement>(null);
   const gridExportRef = useRef<HTMLDivElement>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -193,6 +194,12 @@ export function BoxDetailPage() {
   const [formError, setFormError] = useState('');
   const [editBoxName, setEditBoxName] = useState('');
   const [editBoxDesc, setEditBoxDesc] = useState('');
+  const [editBoxShelf, setEditBoxShelf] = useState('');
+  const [editBoxRack, setEditBoxRack] = useState('');
+  const [editBoxRows, setEditBoxRows] = useState('9');
+  const [editBoxCols, setEditBoxCols] = useState('9');
+  const [editBoxImageFile, setEditBoxImageFile] = useState<File | null>(null);
+  const [editBoxImagePreview, setEditBoxImagePreview] = useState<string | null>(null);
   const [editBoxError, setEditBoxError] = useState('');
 
   // Spreadsheet state — full grid, every position
@@ -225,9 +232,19 @@ export function BoxDetailPage() {
   const { data: freezer } = useQuery({
     queryKey: ['freezer', freezerId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('freezers').select('id, name').eq('id', freezerId!).single();
+      const { data, error } = await supabase.from('freezers').select('id, name, shelf_count').eq('id', freezerId!).single();
       if (error) throw error;
-      return data as { id: string; name: string };
+      return data as { id: string; name: string; shelf_count: number };
+    },
+    enabled: !!freezerId && !!user,
+  });
+
+  const { data: freezerRacks = [] } = useQuery({
+    queryKey: ['racks', freezerId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from('racks') as any).select('*').eq('freezer_id', freezerId!).order('shelf_number', { ascending: true });
+      if (error) throw error;
+      return data as Rack[];
     },
     enabled: !!freezerId && !!user,
   });
@@ -363,9 +380,18 @@ export function BoxDetailPage() {
   });
 
   const editBoxMutation = useMutation({
-    mutationFn: async ({ name, description }: { name: string; description: string }) => {
+    mutationFn: async ({ name, description, shelf_number, rack_id, rows, columns }: { name: string; description: string; shelf_number: number | null; rack_id: string | null; rows: number; columns: number }) => {
+      let imageUrl = box?.image_url ?? null;
+      if (editBoxImageFile) {
+        const ext = editBoxImageFile.name.split('.').pop();
+        const path = `boxes/${boxId}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('cryo-images').upload(path, editBoxImageFile, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from('cryo-images').getPublicUrl(path);
+        imageUrl = urlData.publicUrl;
+      }
       const { error } = await (supabase.from('boxes') as any)
-        .update({ name: name.trim(), description: description.trim() || null })
+        .update({ name: name.trim(), description: description.trim() || null, shelf_number, rack_id, rows, columns, image_url: imageUrl })
         .eq('id', boxId!);
       if (error) throw error;
     },
@@ -374,6 +400,7 @@ export function BoxDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
       queryClient.invalidateQueries({ queryKey: ['boxes', freezerId] });
       setShowEditBoxDialog(false);
+      setEditBoxImageFile(null);
     },
     onError: (e: any) => setEditBoxError(e.message),
   });
@@ -554,6 +581,12 @@ export function BoxDetailPage() {
     if (!box) return;
     setEditBoxName(box.name);
     setEditBoxDesc(box.description || '');
+    setEditBoxShelf(box.shelf_number ? String(box.shelf_number) : '');
+    setEditBoxRack(box.rack_id || '');
+    setEditBoxRows(String(box.rows));
+    setEditBoxCols(String(box.columns));
+    setEditBoxImageFile(null);
+    setEditBoxImagePreview(box.image_url || null);
     setEditBoxError('');
     setShowEditBoxDialog(true);
   };
@@ -1313,7 +1346,7 @@ export function BoxDetailPage() {
 
       {/* ── EDIT BOX DIALOG ── */}
       <Dialog open={showEditBoxDialog} onOpenChange={setShowEditBoxDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-gray-900">Editar caja</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             {editBoxError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{editBoxError}</p>}
@@ -1325,9 +1358,70 @@ export function BoxDetailPage() {
               <label className="text-sm font-medium text-gray-700">Descripción</label>
               <Input value={editBoxDesc} onChange={(e) => setEditBoxDesc(e.target.value)} placeholder="Descripción opcional..." className="border-gray-300 text-gray-900" />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Balda</label>
+                <select value={editBoxShelf} onChange={(e) => { setEditBoxShelf(e.target.value); setEditBoxRack(''); }} className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Sin asignar</option>
+                  {Array.from({ length: freezer?.shelf_count || 3 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>Balda {i + 1}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Rack</label>
+                <select
+                  value={editBoxRack}
+                  onChange={(e) => setEditBoxRack(e.target.value)}
+                  disabled={!editBoxShelf || freezerRacks.filter((r) => r.shelf_number === parseInt(editBoxShelf)).length === 0}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
+                >
+                  <option value="">En la balda</option>
+                  {freezerRacks.filter((r) => r.shelf_number === parseInt(editBoxShelf)).map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Filas</label>
+                <Input type="number" value={editBoxRows} onChange={(e) => setEditBoxRows(e.target.value)} min={1} max={20} className="border-gray-300 text-gray-900" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Columnas</label>
+                <Input type="number" value={editBoxCols} onChange={(e) => setEditBoxCols(e.target.value)} min={1} max={20} className="border-gray-300 text-gray-900" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Foto (opcional)</label>
+              <input ref={editBoxImageRef} type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; setEditBoxImageFile(f); setEditBoxImagePreview(URL.createObjectURL(f)); }} className="hidden" />
+              <div className="flex items-center gap-3">
+                {editBoxImagePreview && (
+                  <div className="relative flex-shrink-0">
+                    <img src={editBoxImagePreview} alt="preview" className="w-14 h-14 rounded-lg object-cover border border-gray-200" />
+                    <button type="button" onClick={() => { setEditBoxImageFile(null); setEditBoxImagePreview(null); }} className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5"><X className="w-3 h-3 text-white" /></button>
+                  </div>
+                )}
+                <button type="button" onClick={() => editBoxImageRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors">
+                  <Upload className="w-3.5 h-3.5" /> {editBoxImagePreview ? 'Cambiar foto' : 'Subir foto'}
+                </button>
+              </div>
+            </div>
             <div className="flex gap-3 pt-1">
               <Button variant="outline" onClick={() => setShowEditBoxDialog(false)} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
-              <Button disabled={editBoxMutation.isPending || !editBoxName.trim()} onClick={() => editBoxMutation.mutate({ name: editBoxName, description: editBoxDesc })} className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white">
+              <Button
+                disabled={editBoxMutation.isPending || !editBoxName.trim()}
+                onClick={() => editBoxMutation.mutate({
+                  name: editBoxName,
+                  description: editBoxDesc,
+                  shelf_number: editBoxShelf ? parseInt(editBoxShelf) : null,
+                  rack_id: editBoxRack || null,
+                  rows: parseInt(editBoxRows) || (box?.rows ?? 9),
+                  columns: parseInt(editBoxCols) || (box?.columns ?? 9),
+                })}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+              >
                 {editBoxMutation.isPending ? 'Guardando...' : 'Guardar'}
               </Button>
             </div>
