@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Upload, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste } from 'lucide-react';
+import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, ArrowUpFromLine, Upload } from 'lucide-react';
 import type { Box, Sample, SampleType, SampleStatus, UnitType } from '@/types';
 
 const SAMPLE_TYPES: SampleType[] = [
@@ -341,6 +341,24 @@ export function BoxDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
       setShowDetailDialog(false);
       setSelectedSample(null);
+    },
+  });
+
+  const sacarMuestraMutation = useMutation({
+    mutationFn: async (s: Sample) => {
+      const newThaws = s.thaw_count + 1;
+      const { error } = await (supabase.from('samples') as any)
+        .update({ status: 'used', thaw_count: newThaws })
+        .eq('id', s.id);
+      if (error) throw error;
+      return { newThaws, maxThaws: s.max_thaws };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
+      setShowDetailDialog(false);
+      if (result.newThaws >= result.maxThaws) {
+        setTimeout(() => alert(`Advertencia: la muestra ha alcanzado el máximo de descongelaciones (${result.maxThaws}).`), 100);
+      }
     },
   });
 
@@ -853,13 +871,18 @@ export function BoxDetailPage() {
         </div>
 
         <div className="px-8 py-6 space-y-6">
-          {/* View toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-            <button onClick={() => handleSetViewMode('grid')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'grid' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              <LayoutGrid className="w-4 h-4" /> Cuadrícula
-            </button>
-            <button onClick={() => handleSetViewMode('spreadsheet')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'spreadsheet' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              <Table2 className="w-4 h-4" /> Hoja de datos
+          {/* View toggle + inline edit box button */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+              <button onClick={() => handleSetViewMode('grid')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'grid' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                <LayoutGrid className="w-4 h-4" /> Cuadrícula
+              </button>
+              <button onClick={() => handleSetViewMode('spreadsheet')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'spreadsheet' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                <Table2 className="w-4 h-4" /> Hoja de datos
+              </button>
+            </div>
+            <button onClick={openEditBox} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-white transition-colors bg-gray-100">
+              <Pencil className="w-3.5 h-3.5" /> Editar caja
             </button>
           </div>
 
@@ -902,15 +925,12 @@ export function BoxDetailPage() {
                               key={c}
                               onClick={() => handleCellClick(r + 1, c + 1)}
                               title={sample ? `${sample.sample_code} | ${sample.sample_type} | ${sample.status}` : `${label} — vacío`}
-                              className={`w-14 h-14 rounded border text-xs font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${CELL_BG[cellStatus] || CELL_BG.empty}`}
+                              className={`w-16 h-16 rounded border text-xs font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${CELL_BG[cellStatus] || CELL_BG.empty}`}
                             >
                               {sample ? (
-                                <>
-                                  <span className="text-white text-[9px] font-bold leading-tight opacity-80">{label}</span>
-                                  <span className="text-white text-[9px] leading-tight px-0.5 text-center truncate w-full">{sample.sample_code}</span>
-                                </>
+                                <span className="text-white text-[9px] font-semibold leading-tight px-0.5 text-center break-all">{sample.sample_code}</span>
                               ) : (
-                                <Plus className="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100" />
+                                <Plus className="w-4 h-4 text-gray-200" />
                               )}
                             </button>
                           );
@@ -1259,8 +1279,20 @@ export function BoxDetailPage() {
                 )}
               </p>
 
-              <div className="flex gap-3 pt-1">
-                <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="flex-1 border-gray-300 text-gray-700">Cerrar</Button>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="border-gray-300 text-gray-700">Cerrar</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (confirm(`¿Sacar muestra ${selectedSample.sample_code}? Se marcará como "en uso" y se añadirá una descongelación.`)) {
+                      sacarMuestraMutation.mutate(selectedSample);
+                    }
+                  }}
+                  disabled={sacarMuestraMutation.isPending}
+                  className="border-amber-200 text-amber-600 hover:bg-amber-50 flex items-center gap-1"
+                >
+                  <ArrowUpFromLine className="w-4 h-4" /> Sacar muestra
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1269,7 +1301,7 @@ export function BoxDetailPage() {
                     }
                   }}
                   disabled={removeSampleMutation.isPending}
-                  className="flex-1 border-red-200 text-red-500 hover:bg-red-50"
+                  className="border-red-200 text-red-500 hover:bg-red-50 ml-auto"
                 >
                   <X className="w-4 h-4" /> Quitar posición
                 </Button>

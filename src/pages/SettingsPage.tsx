@@ -80,126 +80,133 @@ export function SettingsPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-2xl">
-        <div className="space-y-6">
-          {/* Lab info */}
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-white font-semibold mb-4">Información del laboratorio</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Laboratorio</label>
-                <p className="text-white font-mono text-sm">{user?.laboratory}</p>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Rol actual</label>
-                <span className="text-sm px-2 py-1 rounded bg-blue-500/20 text-blue-400 capitalize">
-                  {user?.role}
-                </span>
-              </div>
-            </div>
-          </div>
+      <div className="min-h-full bg-gray-50">
+        <div className="bg-white border-b border-gray-200 px-8 py-6">
+          <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Ajustes del laboratorio y valores por defecto</p>
+        </div>
 
-          {/* Defaults */}
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-white font-semibold mb-4">Valores por defecto</h2>
-            <div className="space-y-4">
+        <div className="px-8 py-6 max-w-2xl">
+          <div className="space-y-6">
+            {/* Lab info */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <h2 className="text-gray-900 font-semibold mb-4">Información del laboratorio</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-slate-300 block mb-1.5">Tipo de muestra por defecto</label>
-                  <select
-                    value={form.default_sample_type}
-                    onChange={(e) => f('default_sample_type', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-600 text-white rounded-md text-sm"
-                    disabled={user?.role === 'read_only'}
-                  >
-                    {['tissue', 'blood', 'serum', 'plasma', 'urine', 'csf', 'saliva', 'dna', 'rna', 'protein', 'other'].map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                  <label className="text-xs text-gray-500 block mb-1">Laboratorio</label>
+                  <p className="text-gray-900 font-mono text-sm">{user?.laboratory}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-slate-300 block mb-1.5">Temperatura por defecto (°C)</label>
-                  <Input
-                    type="number"
-                    value={form.default_temperature}
-                    onChange={(e) => f('default_temperature', e.target.value)}
-                    className="bg-slate-900 border-slate-600 text-white"
-                    disabled={user?.role === 'read_only'}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="text-sm text-slate-300 block mb-1.5">Filas de caja</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={form.default_box_rows}
-                    onChange={(e) => f('default_box_rows', e.target.value)}
-                    className="bg-slate-900 border-slate-600 text-white"
-                    disabled={user?.role === 'read_only'}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-slate-300 block mb-1.5">Columnas de caja</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={form.default_box_columns}
-                    onChange={(e) => f('default_box_columns', e.target.value)}
-                    className="bg-slate-900 border-slate-600 text-white"
-                    disabled={user?.role === 'read_only'}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-slate-300 block mb-1.5">Máx. thaws por defecto</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={form.default_max_thaws}
-                    onChange={(e) => f('default_max_thaws', e.target.value)}
-                    className="bg-slate-900 border-slate-600 text-white"
-                    disabled={user?.role === 'read_only'}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-slate-300 block mb-1.5">Idioma</label>
-                  <select
-                    value={form.language}
-                    onChange={(e) => f('language', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-600 text-white rounded-md text-sm"
-                    disabled={user?.role === 'read_only'}
-                  >
-                    <option value="es">Español</option>
-                    <option value="en">English</option>
-                    <option value="pt">Português</option>
-                  </select>
+                  <label className="text-xs text-gray-500 block mb-1">Rol actual</label>
+                  <span className="text-sm px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 capitalize">
+                    {user?.role}
+                  </span>
                 </div>
               </div>
             </div>
-          </div>
 
-          {user?.role !== 'read_only' && (
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
-                className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
-              >
-                <Save className="w-4 h-4" />
-                {saveMutation.isPending ? 'Guardando...' : 'Guardar configuración'}
-              </Button>
-              {saved && (
-                <span className="text-green-400 text-sm flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4" /> Guardado
-                </span>
-              )}
+            {/* Defaults */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <h2 className="text-gray-900 font-semibold mb-4">Valores por defecto</h2>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-700 block mb-1.5">Tipo de muestra por defecto</label>
+                    <select
+                      value={form.default_sample_type}
+                      onChange={(e) => f('default_sample_type', e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={user?.role === 'read_only'}
+                    >
+                      {['tissue', 'blood', 'serum', 'plasma', 'urine', 'csf', 'saliva', 'dna', 'rna', 'protein', 'other'].map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-700 block mb-1.5">Temperatura por defecto (°C)</label>
+                    <Input
+                      type="number"
+                      value={form.default_temperature}
+                      onChange={(e) => f('default_temperature', e.target.value)}
+                      className="bg-white border-gray-200 text-gray-900"
+                      disabled={user?.role === 'read_only'}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-700 block mb-1.5">Filas de caja</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={form.default_box_rows}
+                      onChange={(e) => f('default_box_rows', e.target.value)}
+                      className="bg-white border-gray-200 text-gray-900"
+                      disabled={user?.role === 'read_only'}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-700 block mb-1.5">Columnas de caja</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={form.default_box_columns}
+                      onChange={(e) => f('default_box_columns', e.target.value)}
+                      className="bg-white border-gray-200 text-gray-900"
+                      disabled={user?.role === 'read_only'}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-700 block mb-1.5">Máx. thaws por defecto</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.default_max_thaws}
+                      onChange={(e) => f('default_max_thaws', e.target.value)}
+                      className="bg-white border-gray-200 text-gray-900"
+                      disabled={user?.role === 'read_only'}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-700 block mb-1.5">Idioma</label>
+                    <select
+                      value={form.language}
+                      onChange={(e) => f('language', e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={user?.role === 'read_only'}
+                    >
+                      <option value="es">Español</option>
+                      <option value="en">English</option>
+                      <option value="pt">Português</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
+
+            {user?.role !== 'read_only' && (
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={() => saveMutation.mutate()}
+                  disabled={saveMutation.isPending}
+                  className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+                >
+                  <Save className="w-4 h-4" />
+                  {saveMutation.isPending ? 'Guardando...' : 'Guardar configuración'}
+                </Button>
+                {saved && (
+                  <span className="text-green-600 text-sm flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4" /> Guardado
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </AppLayout>
