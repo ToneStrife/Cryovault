@@ -8,10 +8,7 @@ import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Plus, Search, FlaskConical, Pencil, X, ChevronDown, Filter, Trash2,
-  RotateCcw, CheckSquare, Square, Beaker, Archive, Thermometer, Package2,
-} from 'lucide-react';
+import { Plus, Search, FlaskConical, Pencil, X, ChevronDown, Filter, Trash2, RotateCcw, SquareCheck as CheckSquare, Square, Beaker, Archive, Thermometer, Package2 } from 'lucide-react';
 import type { Sample, SampleType, SampleStatus, UnitType, Freezer, Box } from '@/types';
 
 const STATUS_LABEL: Record<string, string> = {
