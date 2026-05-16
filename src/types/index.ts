@@ -29,6 +29,8 @@ export interface Freezer {
   building: string | null;
   notes: string | null;
   laboratory: string;
+  image_url: string | null;
+  shelf_count: number;
   created_at: string;
   updated_at: string;
   created_by: string;
@@ -41,6 +43,7 @@ export interface Rack {
   shelf_number: number;
   rows: number;
   columns: number;
+  slot_count: number;
   created_at: string;
   created_by: string;
 }
@@ -49,6 +52,7 @@ export interface Box {
   id: string;
   freezer_id: string;
   rack_id: string | null;
+  shelf_number: number | null;
   name: string;
   description: string | null;
   rows: number;
@@ -58,6 +62,7 @@ export interface Box {
   occupancy: number;
   qr_code: string | null;
   archived: boolean;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
   created_by: string;

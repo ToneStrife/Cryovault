@@ -13,6 +13,7 @@ import { SearchPage } from '@/pages/SearchPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { UsersPage } from '@/pages/UsersPage';
+import { BoxesPage } from '@/pages/BoxesPage';
 import './App.css';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -78,6 +79,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <BoxDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/boxes"
+        element={
+          <ProtectedRoute>
+            <BoxesPage />
           </ProtectedRoute>
         }
       />

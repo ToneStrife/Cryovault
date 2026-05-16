@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LayoutGrid, Beaker, Search, ChartBar as BarChart3, Settings, Users, LogOut, Menu, X, Snowflake } from 'lucide-react';
+import { LayoutGrid, Beaker, Search, ChartBar as BarChart3, Settings, Users, LogOut, Menu, X, Snowflake, Package2 } from 'lucide-react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -11,11 +11,12 @@ interface AppLayoutProps {
 const menuItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
   { label: 'Freezers', href: '/freezers', icon: Snowflake },
-  { label: 'Samples', href: '/samples', icon: Beaker },
-  { label: 'Search', href: '/search', icon: Search },
-  { label: 'Reports', href: '/reports', icon: BarChart3 },
-  { label: 'Settings', href: '/settings', icon: Settings },
-  { label: 'Users', href: '/users', icon: Users },
+  { label: 'Cajas', href: '/boxes', icon: Package2 },
+  { label: 'Muestras', href: '/samples', icon: Beaker },
+  { label: 'Búsqueda', href: '/search', icon: Search },
+  { label: 'Informes', href: '/reports', icon: BarChart3 },
+  { label: 'Ajustes', href: '/settings', icon: Settings },
+  { label: 'Usuarios', href: '/users', icon: Users },
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {
