@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Upload, Printer, Check, FileText, Table2, Save, Image, FlaskConical } from 'lucide-react';
+import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Upload, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste } from 'lucide-react';
 import type { Box, Sample, SampleType, SampleStatus, UnitType } from '@/types';
 
 const SAMPLE_TYPES: SampleType[] = [
@@ -198,6 +198,9 @@ export function BoxDetailPage() {
   // Spreadsheet state — full grid, every position
   const [sheetRows, setSheetRows] = useState<SpreadsheetRow[]>([]);
   const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
+  const [focusedCell, setFocusedCell] = useState<{ rowIdx: number; colIdx: number } | null>(null);
+  const [pasteHighlight, setPasteHighlight] = useState<Set<string>>(new Set()); // "rowIdx_colIdx"
+  const [pasteCount, setPasteCount] = useState<number | null>(null);
 
   const { data: box, isLoading: boxLoading } = useQuery({
     queryKey: ['box', boxId],
@@ -435,6 +438,55 @@ export function BoxDetailPage() {
       updated[idx] = { ...updated[idx], [col]: val, _dirty: true };
       return updated;
     });
+  };
+
+  // Editable columns (skip position_label which is readonly)
+  const EDITABLE_COLS = SHEET_COLS.filter((c) => c.type !== 'readonly');
+
+  const handleTablePaste = (e: React.ClipboardEvent<HTMLTableSectionElement>) => {
+    if (!focusedCell) return;
+    const text = e.clipboardData.getData('text/plain');
+    if (!text.trim()) return;
+    e.preventDefault();
+
+    // Parse TSV (Excel / Sheets copy format)
+    const pastedRows = text
+      .split(/\r?\n/)
+      .map((line) => line.split('\t'))
+      .filter((row) => row.some((cell) => cell.trim() !== ''));
+
+    if (pastedRows.length === 0) return;
+
+    const { rowIdx: startRow, colIdx: startCol } = focusedCell;
+    const highlights = new Set<string>();
+    let filled = 0;
+
+    setSheetRows((prev) => {
+      const updated = [...prev];
+      for (let pr = 0; pr < pastedRows.length; pr++) {
+        const targetRowIdx = startRow + pr;
+        if (targetRowIdx >= updated.length) break;
+        for (let pc = 0; pc < pastedRows[pr].length; pc++) {
+          const targetColIdx = startCol + pc;
+          if (targetColIdx >= EDITABLE_COLS.length) break;
+          const colKey = EDITABLE_COLS[targetColIdx].key;
+          const colDef = EDITABLE_COLS[targetColIdx];
+          let val = pastedRows[pr][pc].trim();
+          // Validate select values; fall back to current value if invalid
+          if (colDef.type === 'select' && colDef.options && val && !colDef.options.includes(val)) {
+            val = (updated[targetRowIdx] as any)[colKey];
+          }
+          updated[targetRowIdx] = { ...updated[targetRowIdx], [colKey]: val, _dirty: true };
+          highlights.add(`${targetRowIdx}_${targetColIdx}`);
+          filled++;
+        }
+      }
+      return updated;
+    });
+
+    setPasteCount(filled);
+    setPasteHighlight(highlights);
+    setTimeout(() => { setPasteHighlight(new Set()); setPasteCount(null); }, 1200);
   };
 
   // --- Grid actions ---
@@ -788,9 +840,6 @@ export function BoxDetailPage() {
 
             <div className="flex items-center gap-2 flex-wrap">
               <Button variant="outline" onClick={() => setShowQrDialog(true)} className="border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"><QrCode className="w-4 h-4" /> Ver QR</Button>
-              <Button variant="outline" onClick={() => { setImportTab('upload'); setImportResult(null); setImportPreview(null); setShowImportDialog(true); }} className="border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">
-                <Upload className="w-4 h-4" /> Importar
-              </Button>
               <Button onClick={openAllocate} className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-sm">
                 <UserPlus className="w-4 h-4" /> Asignar muestra
               </Button>
@@ -959,7 +1008,14 @@ export function BoxDetailPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Tab para moverse · Intro para confirmar</span>
+                  {pasteCount !== null && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium animate-pulse">
+                      {pasteCount} celda{pasteCount !== 1 ? 's' : ''} pegada{pasteCount !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                    <ClipboardPaste className="w-3 h-3" /> Tab · Intro · Ctrl+V desde Excel
+                  </span>
                   {dirtyCount > 0 && (
                     <button onClick={saveAllDirty} className="flex items-center gap-1.5 text-sm font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
                       <Save className="w-3.5 h-3.5" /> Guardar todo
@@ -980,7 +1036,7 @@ export function BoxDetailPage() {
                       <th className="w-10 border-r-0" />
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody onPaste={handleTablePaste}>
                     {sheetRows.map((sr, idx) => {
                       const key = sr._id ?? sr.position_label;
                       const isSaving = savingRows.has(key);
@@ -991,21 +1047,26 @@ export function BoxDetailPage() {
                           key={sr.position_label}
                           className={`border-b border-gray-100 transition-colors ${isNew && !isDirty ? 'bg-gray-50/40 hover:bg-gray-50' : isDirty ? 'bg-amber-50/40' : 'hover:bg-blue-50/20'}`}
                         >
-                          {SHEET_COLS.map((col) => {
+                          {SHEET_COLS.map((col, colIdx) => {
                             const val = (sr as any)[col.key] as string;
+                            // editable column index among editable cols (excluding readonly)
+                            const editableColIdx = EDITABLE_COLS.findIndex((c) => c.key === col.key);
+                            const isHighlighted = editableColIdx >= 0 && pasteHighlight.has(`${idx}_${editableColIdx}`);
+                            const cellClass = isHighlighted ? 'bg-blue-100' : '';
                             if (col.type === 'readonly') {
                               return (
-                                <td key={col.key} style={{ minWidth: col.minW }} className="px-3 py-1 border-r border-gray-100">
+                                <td key={col.key} style={{ minWidth: col.minW }} className={`px-3 py-1 border-r border-gray-100 ${cellClass}`}>
                                   <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${isNew ? 'text-gray-400 bg-gray-100' : 'text-blue-600 bg-blue-50'}`}>{val}</span>
                                 </td>
                               );
                             }
                             if (col.type === 'select') {
                               return (
-                                <td key={col.key} style={{ minWidth: col.minW }} className="px-1 py-0.5 border-r border-gray-100">
+                                <td key={col.key} style={{ minWidth: col.minW }} className={`px-1 py-0.5 border-r border-gray-100 transition-colors ${cellClass}`}>
                                   <select
                                     value={val}
                                     onChange={(e) => updateSheetCell(idx, col.key, e.target.value)}
+                                    onFocus={() => setFocusedCell({ rowIdx: idx, colIdx: editableColIdx })}
                                     onBlur={() => { if ((sr._dirty || sr._new) && sr.sample_code.trim()) saveSheetRow(sr); }}
                                     disabled={isSaving || (isNew && !sr.sample_code.trim())}
                                     className="w-full px-2 py-1.5 text-xs bg-transparent border-0 text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400 rounded cursor-pointer hover:bg-gray-50 disabled:opacity-40"
@@ -1015,12 +1076,14 @@ export function BoxDetailPage() {
                                 </td>
                               );
                             }
+                            void colIdx;
                             return (
-                              <td key={col.key} style={{ minWidth: col.minW }} className="px-1 py-0.5 border-r border-gray-100">
+                              <td key={col.key} style={{ minWidth: col.minW }} className={`px-1 py-0.5 border-r border-gray-100 transition-colors ${cellClass}`}>
                                 <input
                                   type={col.type === 'number' ? 'number' : 'text'}
                                   value={val}
                                   onChange={(e) => updateSheetCell(idx, col.key, e.target.value)}
+                                  onFocus={() => setFocusedCell({ rowIdx: idx, colIdx: editableColIdx })}
                                   onBlur={() => { if ((sr._dirty || sr._new) && sr.sample_code.trim()) saveSheetRow(sr); }}
                                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLInputElement).blur(); } }}
                                   disabled={isSaving}
