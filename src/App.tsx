@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -13,6 +14,34 @@ import { ReportsPage } from '@/pages/ReportsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { UsersPage } from '@/pages/UsersPage';
 import './App.css';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8">
+          <div className="max-w-lg w-full bg-slate-900 border border-slate-700 rounded-xl p-8 text-center">
+            <p className="text-red-400 font-semibold text-lg mb-2">Something went wrong</p>
+            <p className="text-slate-400 text-sm font-mono">{(this.state.error as Error).message}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-6 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+            >
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function AppRoutes() {
   return (
@@ -100,9 +129,11 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

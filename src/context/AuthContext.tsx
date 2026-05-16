@@ -20,7 +20,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is already logged in
+    let settled = false;
+
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        setIsLoading(false);
+      }
+    };
+
+    // Timeout fallback — never hang on spinner longer than 6s
+    const timeout = setTimeout(settle, 6000);
+
     const checkSession = async () => {
       try {
         const {
@@ -41,33 +52,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error('Error checking session:', error);
       } finally {
-        setIsLoading(false);
+        settle();
       }
     };
 
     checkSession();
 
-    // Listen for auth state changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .maybeSingle();
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      (async () => {
+        if (session?.user) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
 
-        if (data) {
-          setUser(data);
+          if (data) {
+            setUser(data);
+          }
+        } else {
+          setUser(null);
         }
-      } else {
-        setUser(null);
-      }
-      setIsLoading(false);
+        settle();
+      })();
     });
 
     return () => {
+      clearTimeout(timeout);
       subscription?.unsubscribe();
     };
   }, []);

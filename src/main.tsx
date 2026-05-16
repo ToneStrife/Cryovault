@@ -14,12 +14,18 @@ const queryClient = new QueryClient({
   },
 });
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  console.error('CryoVault: #root element not found. App cannot mount.');
+} else {
+  createRoot(rootElement).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+}

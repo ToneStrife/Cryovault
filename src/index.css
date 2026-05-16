@@ -16,7 +16,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  overflow: hidden;
+  overflow: auto;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
