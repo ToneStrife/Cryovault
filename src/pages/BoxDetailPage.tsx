@@ -13,7 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, ArrowUpFromLine, Upload } from 'lucide-react';
+import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload } from 'lucide-react';
+
 import type { Box, Sample, SampleType, SampleStatus, UnitType, Rack } from '@/types';
 
 const SAMPLE_TYPES: SampleType[] = [
@@ -201,6 +202,8 @@ export function BoxDetailPage() {
   const [editBoxImageFile, setEditBoxImageFile] = useState<File | null>(null);
   const [editBoxImagePreview, setEditBoxImagePreview] = useState<string | null>(null);
   const [editBoxError, setEditBoxError] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<SampleFormData>(emptyForm);
 
   // Spreadsheet state — full grid, every position
   const [sheetRows, setSheetRows] = useState<SpreadsheetRow[]>([]);
@@ -306,7 +309,30 @@ export function BoxDetailPage() {
 
   // --- Mutations ---
 
+  const updateSampleMutation = useMutation({
+    mutationFn: async (updatedData: Partial<Sample>) => {
+      if (!selectedSample) throw new Error('No hay muestra seleccionada');
+      const { error } = await (supabase.from('samples') as any)
+        .update({
+          ...updatedData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedSample.id);
+      if (error) throw error;
+      return updatedData;
+    },
+    onSuccess: (updatedData) => {
+      queryClient.setQueryData(['box-samples', boxId], (old: Sample[] = []) =>
+        old.map((s) => (s.id === selectedSample?.id ? { ...s, ...updatedData } : s))
+      );
+      setIsEditing(false);
+      setShowDetailDialog(false);
+      setSelectedSample(null);
+    },
+  });
+
   const addSampleMutation = useMutation({
+
     mutationFn: async (data: SampleFormData & { row: number; col: number }) => {
       const label = positionLabel(data.row, data.col);
       const payload = {
@@ -540,6 +566,19 @@ export function BoxDetailPage() {
     const existing = sampleMap[`${row}_${col}`];
     if (existing) {
       setSelectedSample(existing);
+      setEditForm({
+        sample_code: existing.sample_code,
+        patient_code: existing.patient_code || '',
+        project: existing.project || '',
+        sample_type: existing.sample_type as SampleType,
+        subtype: existing.subtype || '',
+        volume: existing.volume !== null ? String(existing.volume) : '',
+        units: (existing.units as UnitType) || 'mL',
+        status: existing.status as SampleStatus,
+        max_thaws: String(existing.max_thaws),
+        notes: existing.notes || '',
+      });
+      setIsEditing(false);
       setShowDetailDialog(true);
     } else {
       setSelectedCell({ row, col });
@@ -1250,54 +1289,74 @@ export function BoxDetailPage() {
             <div className="mt-2 space-y-5">
               {/* Header */}
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-2xl font-mono font-bold text-gray-900">{selectedSample.sample_code}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="font-mono text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-semibold">{selectedSample.position_label}</span>
-                    {freezer && <span className="text-xs text-gray-400">{freezer.name} · {box.name}</span>}
+                {isEditing ? (
+                  <Input value={editForm.sample_code} onChange={(e) => setEditForm(p => ({...p, sample_code: e.target.value}))} className="text-2xl font-mono font-bold" />
+                ) : (
+                  <div>
+                    <p className="text-2xl font-mono font-bold text-gray-900">{selectedSample.sample_code}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="font-mono text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-semibold">{selectedSample.position_label}</span>
+                      {freezer && <span className="text-xs text-gray-400">{freezer.name} · {box.name}</span>}
+                    </div>
                   </div>
-                </div>
-                <span className={`text-sm px-3 py-1 rounded-full font-medium capitalize shrink-0 ${STATUS_BADGE[selectedSample.status] || 'bg-gray-100 text-gray-500'}`}>
-                  {STATUS_LABEL[selectedSample.status] || selectedSample.status}
-                </span>
+                )}
+                {isEditing ? (
+                  <select value={editForm.status} onChange={(e) => setEditForm(p => ({...p, status: e.target.value as SampleStatus}))} className="text-sm border rounded-full px-3 py-1">
+                    {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                  </select>
+                ) : (
+                  <span className={`text-sm px-3 py-1 rounded-full font-medium capitalize shrink-0 ${STATUS_BADGE[selectedSample.status] || 'bg-gray-100 text-gray-500'}`}>
+                    {STATUS_LABEL[selectedSample.status] || selectedSample.status}
+                  </span>
+                )}
               </div>
 
               {/* Details grid */}
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {[
-                  { label: 'Tipo', value: selectedSample.sample_type },
-                  { label: 'Subtipo', value: selectedSample.subtype || '—' },
-                  { label: 'Paciente', value: selectedSample.patient_code || '—' },
-                  { label: 'Sujeto', value: (selectedSample as any).subject_code || '—' },
-                  { label: 'Proyecto', value: selectedSample.project || '—' },
-                  { label: 'Laboratorio', value: selectedSample.laboratory || '—' },
-                  { label: 'Volumen', value: selectedSample.volume !== null ? `${selectedSample.volume} ${selectedSample.units}` : '—' },
-                  { label: 'Concentración', value: (selectedSample as any).concentration ? `${(selectedSample as any).concentration}` : '—' },
-                  { label: 'Fecha extracción', value: selectedSample.collection_date || '—' },
-                  { label: 'Fecha congelación', value: selectedSample.freeze_date || '—' },
-                ].map(({ label, value }) => (
+                  { label: 'Tipo', key: 'sample_type', type: 'select', options: SAMPLE_TYPES },
+                  { label: 'Subtipo', key: 'subtype', type: 'text' },
+                  { label: 'Paciente', key: 'patient_code', type: 'text' },
+                  { label: 'Proyecto', key: 'project', type: 'text' },
+                  { label: 'Volumen', key: 'volume', type: 'number' },
+                  { label: 'Unidad', key: 'units', type: 'select', options: UNITS },
+                ].map(({ label, key, type, options }) => (
                   <div key={label} className="bg-gray-50 rounded-lg p-2.5">
                     <p className="text-gray-400 text-xs mb-0.5">{label}</p>
-                    <p className="text-gray-900 capitalize font-medium text-sm">{value}</p>
+                    {isEditing ? (
+                      type === 'select' ? (
+                        <select
+                          value={(editForm as any)[key]}
+                          onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
+                          className="w-full text-sm bg-white border border-gray-200 rounded p-1 focus:ring-0"
+                        >
+                          {options?.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : (
+                        <Input
+                          value={(editForm as any)[key]}
+                          onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
+                          type={type === 'number' ? 'number' : 'text'}
+                          className="text-sm bg-white h-8"
+                        />
+                      )
+                    ) : (
+                      <p className="text-gray-900 capitalize font-medium text-sm">{(selectedSample as any)[key] || '—'}</p>
+                    )}
                   </div>
                 ))}
               </div>
 
-              {/* Thaw progress */}
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-xs text-gray-500 font-medium">Descongelaciones</p>
-                  <p className="text-xs font-mono text-gray-700">{selectedSample.thaw_count} / {selectedSample.max_thaws}</p>
-                </div>
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${selectedSample.thaw_count >= selectedSample.max_thaws ? 'bg-red-500' : selectedSample.thaw_count >= selectedSample.max_thaws * 0.7 ? 'bg-yellow-400' : 'bg-green-500'}`}
-                    style={{ width: `${Math.min((selectedSample.thaw_count / selectedSample.max_thaws) * 100, 100)}%` }}
+              {isEditing ? (
+                <div className="space-y-1">
+                  <p className="text-gray-400 text-xs">Notas</p>
+                  <textarea
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm(p => ({...p, notes: e.target.value}))}
+                    className="w-full rounded-lg p-2 text-sm border-gray-300 min-h-[80px]"
                   />
                 </div>
-              </div>
-
-              {selectedSample.notes && (
+              ) : selectedSample.notes && (
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-400 mb-1">Notas</p>
                   <p className="text-gray-700 text-sm">{selectedSample.notes}</p>
@@ -1305,42 +1364,43 @@ export function BoxDetailPage() {
               )}
 
               {/* Created info */}
-              <p className="text-xs text-gray-400">
-                Registrada: {new Date(selectedSample.created_at).toLocaleString('es-ES')}
-                {selectedSample.updated_at !== selectedSample.created_at && (
-                  <> · Actualizada: {new Date(selectedSample.updated_at).toLocaleString('es-ES')}</>
-                )}
-              </p>
+              {!isEditing && (
+                <p className="text-xs text-gray-400">
+                  Registrada: {new Date(selectedSample.created_at).toLocaleString('es-ES')}
+                  {selectedSample.updated_at !== selectedSample.created_at && (
+                    <> · Actualizada: {new Date(selectedSample.updated_at).toLocaleString('es-ES')}</>
+                  )}
+                </p>
+              )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="border-gray-300 text-gray-700">Cerrar</Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (confirm(`¿Sacar muestra ${selectedSample.sample_code}? Se marcará como "en uso" y se añadirá una descongelación.`)) {
-                      sacarMuestraMutation.mutate(selectedSample);
-                    }
-                  }}
-                  disabled={sacarMuestraMutation.isPending}
-                  className="border-amber-200 text-amber-600 hover:bg-amber-50 flex items-center gap-1"
-                >
-                  <ArrowUpFromLine className="w-4 h-4" /> Sacar muestra
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (confirm('¿Quitar muestra de esta posición? La muestra se mantendrá en el inventario sin posición asignada.')) {
-                      removeSampleMutation.mutate(selectedSample.id);
-                    }
-                  }}
-                  disabled={removeSampleMutation.isPending}
-                  className="border-red-200 text-red-500 hover:bg-red-50 ml-auto"
-                >
-                  <X className="w-4 h-4" /> Quitar posición
-                </Button>
+                {isEditing ? (
+                  <>
+                    <Button variant="outline" onClick={() => setIsEditing(false)}>Cancelar</Button>
+                    <Button onClick={() => updateSampleMutation.mutate({
+                      sample_code: editForm.sample_code,
+                      patient_code: editForm.patient_code,
+                      project: editForm.project,
+                      sample_type: editForm.sample_type,
+                      subtype: editForm.subtype,
+                      volume: editForm.volume ? parseFloat(editForm.volume) : null,
+                      units: editForm.units,
+                      status: editForm.status,
+                      max_thaws: parseInt(editForm.max_thaws),
+                      notes: editForm.notes,
+                    })}>Guardar cambios</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => setIsEditing(true)}>Editar</Button>
+                    <Button variant="outline" onClick={() => { if (confirm('¿Sacar muestra?')) sacarMuestraMutation.mutate(selectedSample); }}>Sacar muestra</Button>
+                    <Button variant="outline" onClick={() => { if (confirm('¿Quitar?')) removeSampleMutation.mutate(selectedSample.id); }} className="text-red-500">Quitar posición</Button>
+                  </>
+                )}
               </div>
             </div>
           )}
+
         </DialogContent>
       </Dialog>
 
