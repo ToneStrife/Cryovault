@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,27 +9,33 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const { signIn } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { signIn, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
+    setIsSubmitting(true);
 
     try {
       await signIn(email, password);
+      // No manual navigate here; useEffect handles the redirect based on auth state
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión');
-    } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2.5 mb-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-200">
@@ -59,11 +66,10 @@ export function LoginPage() {
                 placeholder="tu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-                className="bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 focus:ring-blue-500"
+                disabled={isSubmitting}
+                required
               />
             </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Contraseña</label>
               <Input
@@ -71,25 +77,18 @@ export function LoginPage() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-                className="bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 focus:ring-blue-500"
+                disabled={isSubmitting}
+                required
               />
             </div>
-
             <Button
               type="submit"
-              disabled={isLoading || !email || !password}
+              disabled={isSubmitting}
               className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold py-2.5 rounded-lg transition-all shadow-sm"
             >
-              {isLoading ? 'Cargando...' : 'Iniciar sesión'}
+              {isSubmitting ? 'Accediendo...' : 'Iniciar sesión'}
             </Button>
           </form>
-
-          <div className="mt-6 pt-5 border-t border-gray-100">
-            <p className="text-xs text-gray-400 text-center">
-              El acceso es solo por invitación. Contacta con tu administrador para obtener acceso.
-            </p>
-          </div>
         </div>
       </div>
     </div>
