@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -322,12 +324,9 @@ export function BoxDetailPage() {
       return updatedData;
     },
     onSuccess: (updatedData) => {
-      queryClient.setQueryData(['box-samples', boxId], (old: Sample[] = []) =>
-        old.map((s) => (s.id === selectedSample?.id ? { ...s, ...updatedData } : s))
-      );
+      queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
+      setSelectedSample(prev => prev ? { ...prev, ...updatedData as Sample } : null);
       setIsEditing(false);
-      setShowDetailDialog(false);
-      setSelectedSample(null);
     },
   });
 
@@ -723,7 +722,7 @@ export function BoxDetailPage() {
     ctx.fillStyle = '#9ca3af';
     ctx.textAlign = 'left';
     ctx.font = '9px ui-monospace, monospace';
-    ctx.fillText(`Generado: ${new Date().toLocaleString('es-ES')}`, PAD, canvasH - 10);
+    ctx.fillText(`Generado: ${new Date().toLocaleString('es-ES')}`, PAD, canvasW - 10);
 
     canvas.toBlob((blob) => {
       if (blob) triggerBlobDownload(blob, `${box.name}-grid.png`);
@@ -1320,6 +1319,7 @@ export function BoxDetailPage() {
                   { label: 'Proyecto', key: 'project', type: 'text' },
                   { label: 'Volumen', key: 'volume', type: 'number' },
                   { label: 'Unidad', key: 'units', type: 'select', options: UNITS },
+                  { label: 'Máx. descongelaciones', key: 'max_thaws', type: 'number' },
                 ].map(({ label, key, type, options }) => (
                   <div key={label} className="bg-gray-50 rounded-lg p-2.5">
                     <p className="text-gray-400 text-xs mb-0.5">{label}</p>
