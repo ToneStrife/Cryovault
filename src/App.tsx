@@ -130,7 +130,9 @@ function AppRoutes() {
         }
       />
 
+      {/* Captura la raíz y cualquier ruta no reconocida para mandarla directamente al dashboard */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
