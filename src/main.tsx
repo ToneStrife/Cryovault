@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
@@ -21,12 +21,11 @@ if (!rootElement) {
 } else {
   createRoot(rootElement).render(
     <React.StrictMode>
-      {/* HashRouter es ideal para GitHub Pages ya que maneja las rutas en el cliente sin depender del servidor */}
-      <HashRouter>
+      <BrowserRouter>
         <QueryClientProvider client={queryClient}>
           <App />
         </QueryClientProvider>
-      </HashRouter>
+      </BrowserRouter>
     </React.StrictMode>
   );
 }
