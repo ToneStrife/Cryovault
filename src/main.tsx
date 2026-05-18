@@ -14,6 +14,7 @@ if (rootElement) {
   createRoot(rootElement).render(
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
+        {/* Cambia esto al nombre de tu repo */}
         <BrowserRouter basename="/Cryovault/">
           <AuthProvider>
             <App />

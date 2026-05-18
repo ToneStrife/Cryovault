@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  // Ajusta esto al nombre exacto de tu repositorio en GitHub
   base: '/Cryovault/',
   resolve: {
     alias: {
