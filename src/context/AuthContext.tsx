@@ -19,7 +19,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      console.log("[AuthContext] Fetching profile for:", userId);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -28,22 +27,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (error) {
         console.error("[AuthContext] Error fetching profile:", error);
+        return null;
       }
       return data;
     } catch (e) {
-      console.error("[AuthContext] Unexpected error fetching profile:", e);
+      console.error("[AuthContext] Unexpected error:", e);
       return null;
     }
   };
 
   useEffect(() => {
-    console.log("[AuthContext] Initializing auth state...");
-    
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        console.log("[AuthContext] Initial session:", session ? "found" : "none");
-        
         if (session?.user) {
           const profile = await fetchProfile(session.user.id);
           setUser(profile);
@@ -51,30 +47,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
         }
       } catch (e) {
-        console.error("[AuthContext] Initialization error:", e);
+        console.error("[AuthContext] Init error:", e);
       } finally {
         setIsLoading(false);
-        console.log("[AuthContext] Initialization complete.");
       }
     };
 
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[AuthContext] Auth state change event:", event);
-      
-      try {
-        if (session?.user) {
-          const profile = await fetchProfile(session.user.id);
-          setUser(profile);
-        } else {
-          setUser(null);
-        }
-      } catch (e) {
-        console.error("[AuthContext] Auth state change handler error:", e);
-      } finally {
-        setIsLoading(false);
+      if (session?.user) {
+        const profile = await fetchProfile(session.user.id);
+        setUser(profile);
+      } else {
+        setUser(null);
       }
+      setIsLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -95,8 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await supabase.auth.signOut();
     setUser(null);
   };
 
