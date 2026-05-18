@@ -74,17 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Timeout fallback to prevent infinite loading spinner
-  useEffect(() => {
-    if (!isLoading) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      console.warn("[AuthContext] Loading timeout: forcing isLoading to false after 10 seconds")
-      setIsLoading(false)
-    }, 10000)
-    return () => clearTimeout(timer)
-  }, [isLoading])
 
   const signUp = async (email: string, password: string, fullName: string) => {
     const { error } = await supabase.auth.signUp({
