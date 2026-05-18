@@ -2,19 +2,20 @@
 
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DndContext } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { supabase } from '@/lib/supabase';
 import { AppLayout } from '@/components/AppLayout';
 import { Package2, Layers, Grid3x3 } from 'lucide-react';
 import type { Box as BoxType, Rack } from '@/types';
 
-// Mantenemos tus componentes de diseño exactamente como estaban
 function BoxCard({ box }: { box: BoxType }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: box.id });
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: box.id });
+  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
+  
   return (
     <div 
-      ref={setNodeRef} {...listeners} {...attributes}
-      className={`p-4 bg-white border border-gray-200 rounded-lg shadow-sm cursor-grab hover:shadow-md transition-all ${isDragging ? 'opacity-40' : ''}`}
+      ref={setNodeRef} {...listeners} {...attributes} style={style}
+      className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm cursor-grab hover:shadow-md transition-all"
     >
       <div className="flex items-center gap-3">
         <Package2 className="w-5 h-5 text-blue-500" />
@@ -28,9 +29,9 @@ function BoxCard({ box }: { box: BoxType }) {
 }
 
 function DropArea({ id, title, icon: Icon, children }: { id: string, title: string, icon: any, children: React.ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+  const { setNodeRef } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className={`p-5 rounded-2xl border-2 transition-colors ${isOver ? 'border-blue-400 bg-blue-50' : 'border-dashed border-gray-200 bg-gray-50'}`}>
+    <div ref={setNodeRef} className="p-5 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50">
       <div className="flex items-center gap-2 mb-4 text-gray-600">
         <Icon className="w-4 h-4" />
         <h3 className="font-medium text-sm uppercase tracking-wider">{title}</h3>
@@ -65,7 +66,6 @@ export function FreezerDetailPage() {
     const boxId = active.id;
     const targetId = over.id;
 
-    // Lógica para detectar si soltamos en Balda o Rack
     if (targetId.startsWith('shelf_')) {
       const shelfNumber = parseInt(targetId.split('_')[1]);
       moveMutation.mutate({ boxId, shelfNumber, rackId: null });
