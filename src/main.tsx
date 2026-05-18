@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
@@ -15,11 +15,11 @@ if (rootElement) {
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
         {/* Cambia esto al nombre de tu repo */}
-        <BrowserRouter basename="/Cryovault/">
+        <HashRouter basename="/Cryovault/">
           <AuthProvider>
             <App />
           </AuthProvider>
-        </BrowserRouter>
+        </HashRouter>
       </QueryClientProvider>
     </React.StrictMode>
   );
