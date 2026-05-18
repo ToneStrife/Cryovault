@@ -1283,17 +1283,23 @@ export function BoxDetailPage() {
             <DialogTitle className="text-gray-900">Detalle de muestra</DialogTitle>
           </DialogHeader>
           {selectedSample && (
-            <div className="mt-2 space-y-5">
+            <div className="mt-2 space-y-6">
               {/* Header */}
               <div className="flex items-start justify-between gap-3">
-                <Input value={editForm.sample_code} onChange={(e) => setEditForm(p => ({...p, sample_code: e.target.value}))} className="text-2xl font-mono font-bold" />
-                <select value={editForm.status} onChange={(e) => setEditForm(p => ({...p, status: e.target.value as SampleStatus}))} className="text-sm border rounded-full px-3 py-1">
-                  {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-                </select>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Código</p>
+                  <Input value={editForm.sample_code} onChange={(e) => setEditForm(p => ({...p, sample_code: e.target.value}))} className="text-2xl font-mono font-bold mt-1" />
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Estado</p>
+                  <select value={editForm.status} onChange={(e) => setEditForm(p => ({...p, status: e.target.value as SampleStatus}))} className="text-sm border rounded-full px-3 py-1 mt-1 bg-white">
+                    {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                  </select>
+                </div>
               </div>
 
               {/* Details grid */}
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-2 gap-4">
                 {[
                   { label: 'Tipo', key: 'sample_type', type: 'select', options: SAMPLE_TYPES },
                   { label: 'Subtipo', key: 'subtype', type: 'text' },
@@ -1303,13 +1309,13 @@ export function BoxDetailPage() {
                   { label: 'Unidad', key: 'units', type: 'select', options: UNITS },
                   { label: 'Máx. descongelaciones', key: 'max_thaws', type: 'number' },
                 ].map(({ label, key, type, options }) => (
-                  <div key={label} className="bg-gray-50 rounded-lg p-2.5">
-                    <p className="text-gray-400 text-xs mb-0.5">{label}</p>
+                  <div key={label} className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">{label}</p>
                     {type === 'select' ? (
                       <select
                         value={(editForm as any)[key]}
                         onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
-                        className="w-full text-sm bg-white border border-gray-200 rounded p-1 focus:ring-0"
+                        className="w-full text-sm bg-white border border-gray-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500"
                       >
                         {options?.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
@@ -1318,7 +1324,7 @@ export function BoxDetailPage() {
                         value={(editForm as any)[key]}
                         onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
                         type={type === 'number' ? 'number' : 'text'}
-                        className="text-sm bg-white h-8"
+                        className="text-sm bg-white h-9"
                       />
                     )}
                   </div>
@@ -1326,30 +1332,34 @@ export function BoxDetailPage() {
               </div>
 
               <div className="space-y-1">
-                <p className="text-gray-400 text-xs">Notas</p>
+                <p className="text-xs text-gray-500 font-medium">Notas</p>
                 <textarea
                   value={editForm.notes}
                   onChange={(e) => setEditForm(p => ({...p, notes: e.target.value}))}
-                  className="w-full rounded-lg p-2 text-sm border-gray-300 min-h-[80px]"
+                  className="w-full rounded-lg p-3 text-sm border-gray-300 min-h-[80px] focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button variant="outline" onClick={() => setShowDetailDialog(false)}>Cancelar</Button>
-                <Button onClick={() => updateSampleMutation.mutate({
-                  sample_code: editForm.sample_code,
-                  patient_code: editForm.patient_code,
-                  project: editForm.project,
-                  sample_type: editForm.sample_type,
-                  subtype: editForm.subtype,
-                  volume: editForm.volume ? parseFloat(editForm.volume) : null,
-                  units: editForm.units,
-                  status: editForm.status,
-                  max_thaws: parseInt(editForm.max_thaws),
-                  notes: editForm.notes,
-                })}>Guardar cambios</Button>
-                <Button variant="outline" onClick={() => { if (confirm('¿Sacar muestra?')) sacarMuestraMutation.mutate(selectedSample); }}>Sacar muestra</Button>
-                <Button variant="outline" onClick={() => { if (confirm('¿Quitar?')) removeSampleMutation.mutate(selectedSample.id); }} className="text-red-500">Quitar posición</Button>
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100">
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="px-4">Cancelar</Button>
+                  <Button onClick={() => updateSampleMutation.mutate({
+                    sample_code: editForm.sample_code,
+                    patient_code: editForm.patient_code,
+                    project: editForm.project,
+                    sample_type: editForm.sample_type,
+                    subtype: editForm.subtype,
+                    volume: editForm.volume ? parseFloat(editForm.volume) : null,
+                    units: editForm.units,
+                    status: editForm.status,
+                    max_thaws: parseInt(editForm.max_thaws),
+                    notes: editForm.notes,
+                  })} className="px-6 bg-blue-600 hover:bg-blue-700">Guardar</Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => { if (confirm('¿Sacar muestra?')) sacarMuestraMutation.mutate(selectedSample); }} className="text-blue-600 hover:text-blue-700 text-sm">Sacar</Button>
+                  <Button variant="ghost" onClick={() => { if (confirm('¿Quitar?')) removeSampleMutation.mutate(selectedSample.id); }} className="text-red-500 hover:text-red-600 text-sm">Quitar</Button>
+                </div>
               </div>
             </div>
           )}
