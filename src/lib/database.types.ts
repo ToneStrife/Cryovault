@@ -20,6 +20,18 @@ export interface Database {
         Insert: Record<string, any>;
         Update: Record<string, any>;
       };
+      laboratories: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, any>;
+        Update: Record<string, any>;
+      };
       freezers: {
         Row: {
           id: string;
@@ -42,11 +54,42 @@ export interface Database {
           id: string;
           freezer_id: string;
           name: string;
+          description: string | null;
           shelf_number: number;
           rows: number;
           columns: number;
+          slot_count: number;
+          shelf_count: number;
+          slots_per_shelf: number;
+          image_url: string | null;
           created_at: string;
           created_by: string;
+        };
+        Insert: Record<string, any>;
+        Update: Record<string, any>;
+      };
+      freezer_zones: {
+        Row: {
+          id: string;
+          freezer_id: string;
+          zone_number: number;
+          name: string;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, any>;
+        Update: Record<string, any>;
+      };
+      rack_zones: {
+        Row: {
+          id: string;
+          rack_id: string;
+          zone_number: number;
+          name: string;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
         };
         Insert: Record<string, any>;
         Update: Record<string, any>;
@@ -56,6 +99,7 @@ export interface Database {
           id: string;
           freezer_id: string;
           rack_id: string | null;
+          rack_shelf_number: number | null;
           name: string;
           description: string | null;
           rows: number;
@@ -137,10 +181,19 @@ export interface Database {
           id: string;
           laboratory: string;
           default_sample_type: string;
+          default_sample_status: string;
           default_temperature: number;
           default_box_rows: number;
           default_box_columns: number;
+          default_box_type: string;
+          default_box_status: string;
           default_max_thaws: number;
+          default_units: string;
+          sample_types: string[] | null;
+          sample_statuses: string[] | null;
+          box_types: string[] | null;
+          box_statuses: string[] | null;
+          unit_types: string[] | null;
           language: string;
           created_at: string;
           updated_at: string;

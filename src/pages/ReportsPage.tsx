@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Download } from 'lucide-react';
 import type { Sample, Freezer, Box } from '@/types';
+import { formatAuditLog, makeUserMap } from '@/lib/auditFormat';
 
 const TABS = ['Inventario', 'Por tipo', 'Por estado', 'Auditoría'];
 
@@ -83,6 +84,17 @@ export function ReportsPage() {
     },
     enabled: !!user,
   });
+
+  const { data: auditProfiles = [] } = useQuery({
+    queryKey: ['audit-profiles-report'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name, email');
+      return (data || []) as { id: string; full_name: string | null; email: string | null }[];
+    },
+    enabled: !!user,
+  });
+
+  const auditUserMap = makeUserMap(auditProfiles);
 
   const byType = Object.entries(
     samples.reduce((acc, s) => {
@@ -296,13 +308,18 @@ export function ReportsPage() {
                   <div className="flex justify-end mb-4">
                     <Button
                       onClick={() => downloadCSV(
-                        auditLogs.map((l: any) => ({
+                        auditLogs.map((l: any) => {
+                          const formatted = formatAuditLog(l, auditUserMap);
+                          return {
                           fecha: l.created_at,
-                          usuario: l.user_id,
-                          entidad: l.entity_type,
+                          usuario: formatted.actor,
+                          entidad: formatted.entity,
+                          nombre: formatted.name,
                           id_entidad: l.entity_id,
                           accion: l.action,
-                        })),
+                          cambios: formatted.changes.join(' | '),
+                        };
+                        }),
                         'auditoria.csv'
                       )}
                       variant="outline"
@@ -315,19 +332,24 @@ export function ReportsPage() {
                     {auditLogs.length === 0 ? (
                       <p className="text-gray-400 text-sm text-center py-4">Sin registros de auditoría</p>
                     ) : (
-                      auditLogs.map((log: any) => (
-                        <div key={log.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm">
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                            log.action === 'create' ? 'bg-green-100 text-green-700' :
-                            log.action === 'update' ? 'bg-blue-100 text-blue-700' :
-                            log.action === 'delete' ? 'bg-red-100 text-red-700' :
-                            'bg-orange-100 text-orange-700'
-                          }`}>{log.action}</span>
-                          <span className="text-gray-600 capitalize">{log.entity_type}</span>
-                          <span className="text-gray-400 font-mono text-xs">{log.entity_id.slice(0, 8)}...</span>
-                          <span className="ml-auto text-gray-400 text-xs">{new Date(log.created_at).toLocaleString('es-ES')}</span>
-                        </div>
-                      ))
+                      auditLogs.map((log: any) => {
+                        const formatted = formatAuditLog(log, auditUserMap);
+                        return (
+                          <div key={log.id} className="flex items-start gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm">
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium mt-0.5 ${
+                              log.action === 'create' ? 'bg-green-100 text-green-700' :
+                              log.action === 'update' ? 'bg-blue-100 text-blue-700' :
+                              log.action === 'delete' ? 'bg-red-100 text-red-700' :
+                              'bg-orange-100 text-orange-700'
+                            }`}>{log.action}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-gray-700 font-medium truncate">{formatted.title}</p>
+                              <p className="text-gray-400 text-xs truncate">{formatted.subtitle}</p>
+                            </div>
+                            <span className="text-gray-400 text-xs whitespace-nowrap">{new Date(log.created_at).toLocaleString('es-ES')}</span>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </div>

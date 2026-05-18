@@ -116,13 +116,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile])
 
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName, laboratory: 'default_lab', role: 'researcher' } },
-    })
-    if (error) throw error
+  const signUp = async (_email: string, _password: string, _fullName: string) => {
+    throw new Error('El registro se realiza desde una invitación por email. Pide a un administrador que te invite.')
   }
 
   const signIn = async (email: string, password: string) => {

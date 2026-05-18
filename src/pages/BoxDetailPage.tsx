@@ -16,14 +16,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload } from 'lucide-react';
+import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
 
 import type { Box, Sample, SampleType, SampleStatus, UnitType, Rack } from '@/types';
-
-const SAMPLE_TYPES: SampleType[] = [
-  'tissue', 'blood', 'serum', 'plasma', 'urine', 'csf', 'saliva', 'dna', 'rna', 'protein', 'other',
-];
-const UNITS: UnitType[] = ['mL', 'µL', 'mg', 'µg', 'ng', 'mol/L', '%', 'other'];
-const STATUSES: SampleStatus[] = ['active', 'used', 'discarded', 'archived', 'contaminated'];
 
 const CELL_BG: Record<string, string> = {
   empty: 'bg-white hover:bg-gray-50 border-gray-200',
@@ -44,9 +39,47 @@ const CELL_HEX: Record<string, { bg: string; text: string }> = {
   contaminated: { bg: '#7f1d1d', text: '#ffffff' },
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  active: 'Activo', used: 'Usado', discarded: 'Descartado', archived: 'Archivado', contaminated: 'Contaminado',
-};
+const TYPE_CELL_CLASSES = [
+  'bg-blue-500 hover:bg-blue-600 border-blue-500 text-white',
+  'bg-cyan-500 hover:bg-cyan-600 border-cyan-500 text-white',
+  'bg-teal-500 hover:bg-teal-600 border-teal-500 text-white',
+  'bg-emerald-500 hover:bg-emerald-600 border-emerald-500 text-white',
+  'bg-violet-500 hover:bg-violet-600 border-violet-500 text-white',
+  'bg-fuchsia-500 hover:bg-fuchsia-600 border-fuchsia-500 text-white',
+  'bg-rose-500 hover:bg-rose-600 border-rose-500 text-white',
+  'bg-orange-500 hover:bg-orange-600 border-orange-500 text-white',
+  'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white',
+  'bg-slate-500 hover:bg-slate-600 border-slate-500 text-white',
+];
+
+const TYPE_HEX_COLORS = [
+  { bg: '#3b82f6', text: '#ffffff' },
+  { bg: '#06b6d4', text: '#ffffff' },
+  { bg: '#14b8a6', text: '#ffffff' },
+  { bg: '#10b981', text: '#ffffff' },
+  { bg: '#8b5cf6', text: '#ffffff' },
+  { bg: '#d946ef', text: '#ffffff' },
+  { bg: '#f43f5e', text: '#ffffff' },
+  { bg: '#f97316', text: '#ffffff' },
+  { bg: '#f59e0b', text: '#ffffff' },
+  { bg: '#64748b', text: '#ffffff' },
+];
+
+function optionIndex(value: string, options: string[]) {
+  const direct = options.indexOf(value);
+  if (direct >= 0) return direct;
+  return value.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function typeCellClass(type: string, options: string[]) {
+  return TYPE_CELL_CLASSES[optionIndex(type, options) % TYPE_CELL_CLASSES.length];
+}
+
+function typeHexColor(type: string, options: string[]) {
+  return TYPE_HEX_COLORS[optionIndex(type, options) % TYPE_HEX_COLORS.length];
+}
+
+const STATUS_LABEL = SAMPLE_STATUS_LABEL;
 
 const STATUS_BADGE: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
@@ -65,18 +98,20 @@ interface SpreadsheetColumn {
   optionLabels?: Record<string, string>;
 }
 
-const SHEET_COLS: SpreadsheetColumn[] = [
+function buildSheetCols(sampleTypes: string[], statuses: string[], units: string[]): SpreadsheetColumn[] {
+  return [
   { key: 'position_label', label: 'Pos.', minW: 52, type: 'readonly' },
   { key: 'sample_code', label: 'Código *', minW: 128, type: 'text' },
   { key: 'patient_code', label: 'Paciente', minW: 112, type: 'text' },
   { key: 'project', label: 'Proyecto', minW: 112, type: 'text' },
-  { key: 'sample_type', label: 'Tipo', minW: 110, type: 'select', options: SAMPLE_TYPES },
+  { key: 'sample_type', label: 'Tipo', minW: 110, type: 'select', options: sampleTypes },
   { key: 'subtype', label: 'Subtipo', minW: 96, type: 'text' },
-  { key: 'status', label: 'Estado', minW: 120, type: 'select', options: STATUSES, optionLabels: STATUS_LABEL },
+  { key: 'status', label: 'Estado', minW: 120, type: 'select', options: statuses, optionLabels: STATUS_LABEL },
   { key: 'volume', label: 'Vol.', minW: 72, type: 'number' },
-  { key: 'units', label: 'Unidad', minW: 80, type: 'select', options: UNITS },
+  { key: 'units', label: 'Unidad', minW: 80, type: 'select', options: units },
   { key: 'notes', label: 'Notas', minW: 192, type: 'text' },
-];
+  ];
+}
 
 interface SpreadsheetRow {
   _id: string | null;
@@ -105,10 +140,6 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-function triggerDownload(content: string, filename: string, mimeType: string) {
-  triggerBlobDownload(new Blob([content], { type: mimeType }), filename);
 }
 
 function parseFileToRows(file: File): Promise<Record<string, string>[]> {
@@ -177,6 +208,18 @@ export function BoxDetailPage() {
   const { freezerId, boxId } = useParams<{ freezerId: string; boxId: string }>();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
+  const sampleTypes = settingsOptions.sampleTypes;
+  const statuses = settingsOptions.sampleStatuses;
+  const units = settingsOptions.unitTypes;
+  const defaultSampleForm = useMemo<SampleFormData>(() => ({
+    ...emptyForm,
+    sample_type: settingsOptions.defaultSampleType,
+    status: settingsOptions.defaultSampleStatus,
+    units: settingsOptions.defaultUnits,
+    max_thaws: String(settingsOptions.defaultMaxThaws),
+  }), [settingsOptions.defaultMaxThaws, settingsOptions.defaultSampleStatus, settingsOptions.defaultSampleType, settingsOptions.defaultUnits]);
+  const sheetCols = useMemo(() => buildSheetCols(sampleTypes, statuses, units), [sampleTypes, statuses, units]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editBoxImageRef = useRef<HTMLInputElement>(null);
   const gridExportRef = useRef<HTMLDivElement>(null);
@@ -193,6 +236,9 @@ export function BoxDetailPage() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [bulkApply, setBulkApply] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState<SampleFormData>(emptyForm);
   const [formError, setFormError] = useState('');
   const [editBoxName, setEditBoxName] = useState('');
@@ -205,6 +251,26 @@ export function BoxDetailPage() {
   const [editBoxImagePreview, setEditBoxImagePreview] = useState<string | null>(null);
   const [editBoxError, setEditBoxError] = useState('');
   const [editForm, setEditForm] = useState<SampleFormData>(emptyForm);
+  const [bulkForm, setBulkForm] = useState({
+    patient_code: '', subject_code: '', project: '', sample_type: settingsOptions.defaultSampleType as SampleType,
+    subtype: '', volume: '', units: settingsOptions.defaultUnits as UnitType, concentration: '', status: settingsOptions.defaultSampleStatus as SampleStatus,
+    freeze_date: '', collection_date: '', max_thaws: String(settingsOptions.defaultMaxThaws), notes: '',
+  });
+  const selectedIds = Array.from(selected);
+  const toggleSelect = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const clearSelect = () => setSelected(new Set());
+  const toggleBulkField = (field: string) => setBulkApply((prev) => ({ ...prev, [field]: !prev[field] }));
+  const bf = (field: keyof typeof bulkForm, val: string) => setBulkForm((prev) => ({ ...prev, [field]: val }));
+  const invalidateBoxData = () => {
+    queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
+    queryClient.invalidateQueries({ queryKey: ['box', boxId] });
+    queryClient.invalidateQueries({ queryKey: ['boxes', freezerId] });
+    queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+  };
 
   // Spreadsheet state — full grid, every position
   const [sheetRows, setSheetRows] = useState<SpreadsheetRow[]>([]);
@@ -292,14 +358,14 @@ export function BoxDetailPage() {
             _id: null, _dirty: false, _new: true,
             position_label: lbl,
             sample_code: '', patient_code: '', project: '',
-            sample_type: 'blood', subtype: '', status: 'active',
-            volume: '', units: 'mL', notes: '',
+            sample_type: settingsOptions.defaultSampleType, subtype: '', status: settingsOptions.defaultSampleStatus,
+            volume: '', units: settingsOptions.defaultUnits, notes: '',
           });
         }
       }
     }
     return result;
-  }, []);
+  }, [settingsOptions.defaultSampleStatus, settingsOptions.defaultSampleType, settingsOptions.defaultUnits]);
 
   const handleSetViewMode = (mode: ViewMode) => {
     if (mode === 'spreadsheet' && box) {
@@ -343,7 +409,7 @@ export function BoxDetailPage() {
         units: data.units,
         status: data.status,
         thaw_count: 0,
-        max_thaws: parseInt(data.max_thaws) || 3,
+        max_thaws: parseInt(data.max_thaws) || settingsOptions.defaultMaxThaws,
         notes: data.notes.trim() || null,
         box_id: boxId!,
         position_row: data.row,
@@ -354,7 +420,6 @@ export function BoxDetailPage() {
       };
       const { error } = await (supabase.from('samples') as any).insert([payload]);
       if (error) throw error;
-      await (supabase.from('boxes') as any).update({ occupancy: (box?.occupancy || 0) + 1 }).eq('id', boxId!);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
@@ -372,17 +437,55 @@ export function BoxDetailPage() {
         .update({ box_id: null, position_row: null, position_column: null, position_label: null })
         .eq('id', sampleId);
       if (error) throw error;
-      await (supabase.from('boxes') as any)
-        .update({ occupancy: Math.max((box?.occupancy || 0) - 1, 0) })
-        .eq('id', boxId!);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
-      queryClient.invalidateQueries({ queryKey: ['box', boxId] });
-      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+      invalidateBoxData();
       setShowDetailDialog(false);
       setSelectedSample(null);
     },
+  });
+
+  const removeSelectedFromBoxMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const { error } = await (supabase.from('samples') as any)
+        .update({ box_id: null, position_row: null, position_column: null, position_label: null })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateBoxData();
+      clearSelect();
+    },
+  });
+
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (bulkApply.patient_code) payload.patient_code = bulkForm.patient_code.trim() || null;
+      if (bulkApply.subject_code) payload.subject_code = bulkForm.subject_code.trim() || null;
+      if (bulkApply.project) payload.project = bulkForm.project.trim() || null;
+      if (bulkApply.sample_type) payload.sample_type = bulkForm.sample_type;
+      if (bulkApply.subtype) payload.subtype = bulkForm.subtype.trim() || null;
+      if (bulkApply.volume) payload.volume = bulkForm.volume ? parseFloat(bulkForm.volume) : null;
+      if (bulkApply.units) payload.units = bulkForm.units;
+      if (bulkApply.concentration) payload.concentration = bulkForm.concentration ? parseFloat(bulkForm.concentration) : null;
+      if (bulkApply.status) payload.status = bulkForm.status;
+      if (bulkApply.freeze_date) payload.freeze_date = bulkForm.freeze_date || null;
+      if (bulkApply.collection_date) payload.collection_date = bulkForm.collection_date || null;
+      if (bulkApply.max_thaws) payload.max_thaws = parseInt(bulkForm.max_thaws) || settingsOptions.defaultMaxThaws;
+      if (bulkApply.notes) payload.notes = bulkForm.notes.trim() || null;
+      if (Object.keys(payload).length === 1) throw new Error('Selecciona al menos un campo');
+      const { error } = await (supabase.from('samples') as any).update(payload).in('id', selectedIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateBoxData();
+      setShowBulkDialog(false);
+      setBulkApply({});
+      clearSelect();
+    },
+    onError: (e: any) => setFormError(e.message),
   });
 
   const sacarMuestraMutation = useMutation({
@@ -451,7 +554,7 @@ export function BoxDetailPage() {
           units: sr.units,
           status: sr.status,
           thaw_count: 0,
-          max_thaws: 3,
+          max_thaws: settingsOptions.defaultMaxThaws,
           notes: sr.notes.trim() || null,
           box_id: boxId!,
           position_row: rowNum,
@@ -463,8 +566,6 @@ export function BoxDetailPage() {
         const { data: inserted, error } = await (supabase.from('samples') as any)
           .insert([payload]).select().single();
         if (error) throw error;
-        await (supabase.from('boxes') as any)
-          .update({ occupancy: (box?.occupancy || 0) + 1 }).eq('id', boxId!);
         setSheetRows((prev) =>
           prev.map((r) =>
             r._new && r._id === null && r.position_label === label
@@ -510,7 +611,7 @@ export function BoxDetailPage() {
   };
 
   // Editable columns (skip position_label which is readonly)
-  const EDITABLE_COLS = SHEET_COLS.filter((c) => c.type !== 'readonly');
+  const EDITABLE_COLS = sheetCols.filter((c) => c.type !== 'readonly');
 
   const handleTablePaste = (e: React.ClipboardEvent<HTMLTableSectionElement>) => {
     if (!focusedCell) return;
@@ -560,26 +661,30 @@ export function BoxDetailPage() {
 
   // --- Grid actions ---
 
+  const openSampleDetail = (sample: Sample) => {
+    setSelectedSample(sample);
+    setEditForm({
+      sample_code: sample.sample_code,
+      patient_code: sample.patient_code || '',
+      project: sample.project || '',
+      sample_type: sample.sample_type as SampleType,
+      subtype: sample.subtype || '',
+      volume: sample.volume !== null ? String(sample.volume) : '',
+      units: (sample.units as UnitType) || settingsOptions.defaultUnits,
+      status: sample.status as SampleStatus,
+      max_thaws: String(sample.max_thaws),
+      notes: sample.notes || '',
+    });
+    setShowDetailDialog(true);
+  };
+
   const handleCellClick = (row: number, col: number) => {
     const existing = sampleMap[`${row}_${col}`];
     if (existing) {
-      setSelectedSample(existing);
-      setEditForm({
-        sample_code: existing.sample_code,
-        patient_code: existing.patient_code || '',
-        project: existing.project || '',
-        sample_type: existing.sample_type as SampleType,
-        subtype: existing.subtype || '',
-        volume: existing.volume !== null ? String(existing.volume) : '',
-        units: (existing.units as UnitType) || 'mL',
-        status: existing.status as SampleStatus,
-        max_thaws: String(existing.max_thaws),
-        notes: existing.notes || '',
-      });
-      setShowDetailDialog(true);
+      openSampleDetail(existing);
     } else {
       setSelectedCell({ row, col });
-      setForm({ ...emptyForm });
+      setForm(defaultSampleForm);
       setFormError('');
       setShowAddDialog(true);
     }
@@ -591,7 +696,7 @@ export function BoxDetailPage() {
       for (let c = 1; c <= box.columns; c++) {
         if (!sampleMap[`${r}_${c}`]) {
           setSelectedCell({ row: r, col: c });
-          setForm({ ...emptyForm });
+          setForm(defaultSampleForm);
           setFormError('');
           setShowAddDialog(true);
           return;
@@ -603,7 +708,7 @@ export function BoxDetailPage() {
   const closeAddDialog = () => {
     setShowAddDialog(false);
     setSelectedCell(null);
-    setForm(emptyForm);
+    setForm(defaultSampleForm);
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -673,8 +778,7 @@ export function BoxDetailPage() {
 
       for (let c = 0; c < cols; c++) {
         const sample = sampleMap[`${r + 1}_${c + 1}`];
-        const status = sample ? sample.status : 'empty';
-        const colors = CELL_HEX[status] || CELL_HEX.empty;
+        const colors = sample ? typeHexColor(sample.sample_type, sampleTypes) : CELL_HEX.empty;
         const x = PAD + LABEL_W + c * CELL;
         const radius = 4;
 
@@ -703,12 +807,9 @@ export function BoxDetailPage() {
         ctx.fillStyle = colors.text;
         ctx.textAlign = 'center';
         if (sample) {
-          ctx.font = 'bold 8px ui-monospace, monospace';
-          const lbl = positionLabel(r + 1, c + 1);
-          ctx.fillText(lbl, x + CELL / 2 - 1, y + CELL / 2 - 4);
-          ctx.font = '8px ui-monospace, monospace';
+          ctx.font = 'bold 10px ui-monospace, monospace';
           const code = sample.sample_code.length > 8 ? sample.sample_code.slice(0, 7) + '…' : sample.sample_code;
-          ctx.fillText(code, x + CELL / 2 - 1, y + CELL / 2 + 6);
+          ctx.fillText(code, x + CELL / 2 - 1, y + CELL / 2 + 4);
         } else {
           ctx.font = '9px ui-monospace, monospace';
           ctx.fillText(positionLabel(r + 1, c + 1), x + CELL / 2 - 1, y + CELL / 2 + 3);
@@ -727,19 +828,7 @@ export function BoxDetailPage() {
     }, 'image/png');
   };
 
-  // --- Export CSV / XLSX ---
-  const handleExportCSV = () => {
-    if (!box || samples.length === 0) return;
-    const header = 'posicion,codigo,paciente,proyecto,tipo,subtipo,estado,volumen,unidades,descongelaciones,notas';
-    const rows = samples
-      .filter((s) => s.position_label)
-      .sort((a, b) => (a.position_label || '').localeCompare(b.position_label || ''))
-      .map((s) =>
-        [s.position_label, s.sample_code, s.patient_code || '', s.project || '', s.sample_type, s.subtype || '', s.status, s.volume ?? '', s.units, s.thaw_count, s.notes || ''].join(',')
-      );
-    triggerDownload([header, ...rows].join('\n'), `${box.name}-muestras.csv`, 'text/csv');
-  };
-
+  // --- Export XLSX ---
   const handleExportXLSX = () => {
     if (!box || samples.length === 0) return;
     const data = samples
@@ -760,7 +849,7 @@ export function BoxDetailPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const data = [{ codigo: 'SMP-001', paciente: 'PAT-001', proyecto: 'Proyecto-X', tipo: 'blood', subtipo: '', estado: 'active', volumen: '0.5', unidades: 'mL', notas: '' }];
+    const data = [{ codigo: 'SMP-001', paciente: 'PAT-001', proyecto: 'Proyecto-X', tipo: settingsOptions.defaultSampleType, subtipo: '', estado: settingsOptions.defaultSampleStatus, volumen: '0.5', unidades: settingsOptions.defaultUnits, notas: '' }];
     const ws = XLSX.utils.json_to_sheet(data);
     ws['!cols'] = [14, 12, 14, 10, 10, 12, 8, 8, 20].map((w) => ({ wch: w }));
     const wb = XLSX.utils.book_new();
@@ -803,14 +892,14 @@ export function BoxDetailPage() {
       if (!code) { errors.push({ row: rowNum, message: 'Código vacío' }); continue; }
       const pos = freePositions[imported];
       if (!pos) { errors.push({ row: rowNum, message: 'No hay posiciones libres' }); continue; }
-      const sampleType = (SAMPLE_TYPES.includes(row['tipo'] as SampleType) ? row['tipo'] : 'other') as SampleType;
-      const status = (STATUSES.includes(row['estado'] as SampleStatus) ? row['estado'] : 'active') as SampleStatus;
-      const units = (UNITS.includes(row['unidades'] as UnitType) ? row['unidades'] : 'mL') as UnitType;
+      const sampleType = (sampleTypes.includes(row['tipo'] as SampleType) ? row['tipo'] : settingsOptions.defaultSampleType) as SampleType;
+      const status = (statuses.includes(row['estado'] as SampleStatus) ? row['estado'] : settingsOptions.defaultSampleStatus) as SampleStatus;
+      const rowUnits = (units.includes(row['unidades'] as UnitType) ? row['unidades'] : settingsOptions.defaultUnits) as UnitType;
       const { error } = await (supabase.from('samples') as any).insert([{
         sample_code: code, patient_code: row['paciente'] || null, project: row['proyecto'] || null,
         sample_type: sampleType, subtype: row['subtipo'] || null,
-        volume: row['volumen'] ? parseFloat(row['volumen']) : null, units, status,
-        thaw_count: 0, max_thaws: 3, notes: row['notas'] || null,
+        volume: row['volumen'] ? parseFloat(row['volumen']) : null, units: rowUnits, status,
+        thaw_count: 0, max_thaws: settingsOptions.defaultMaxThaws, notes: row['notas'] || null,
         box_id: boxId!, position_row: pos.row, position_column: pos.col,
         position_label: positionLabel(pos.row, pos.col),
         laboratory: user!.laboratory, created_by: user!.id,
@@ -820,7 +909,6 @@ export function BoxDetailPage() {
     }
 
     if (imported > 0) {
-      await (supabase.from('boxes') as any).update({ occupancy: (box.occupancy || 0) + imported }).eq('id', boxId!);
       queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
       queryClient.invalidateQueries({ queryKey: ['box', boxId] });
       queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
@@ -848,6 +936,7 @@ export function BoxDetailPage() {
     : '';
 
   const f = (key: keyof SampleFormData, val: string) => setForm((prev) => ({ ...prev, [key]: val }));
+  const selectClass = 'w-full appearance-none px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40';
 
   if (boxLoading || !box) {
     return (
@@ -868,6 +957,15 @@ export function BoxDetailPage() {
   const sortedSamples = [...samples]
     .filter((s) => s.position_label)
     .sort((a, b) => (a.position_label || '').localeCompare(b.position_label || ''));
+  const activeSampleTypeSet = new Set(sampleTypes);
+  const legendSampleTypes = Array.from(
+    new Set(sortedSamples.map((s) => s.sample_type).filter((type) => activeSampleTypeSet.has(type)))
+  );
+  const sortedSampleIds = sortedSamples.map((s) => s.id);
+  const sortedSampleIdSet = new Set(sortedSampleIds);
+  const selectedBoxIds = selectedIds.filter((id) => sortedSampleIdSet.has(id));
+  const allBoxSamplesSelected = sortedSamples.length > 0 && selectedBoxIds.length === sortedSamples.length;
+  const selectAllBoxSamples = () => setSelected(new Set(sortedSampleIds));
 
   return (
     <AppLayout>
@@ -931,7 +1029,6 @@ export function BoxDetailPage() {
                 <UserPlus className="w-4 h-4" /> Asignar muestra
               </Button>
               <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
-                <button onClick={handleExportCSV} disabled={samples.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 border-r border-gray-300"><Download className="w-4 h-4" /> CSV</button>
                 <button onClick={handleExportXLSX} disabled={samples.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"><Download className="w-4 h-4" /> Excel</button>
               </div>
               <Button variant="outline" disabled className="border-red-200 text-red-400 text-sm hover:bg-red-50"><Archive className="w-4 h-4" /> Archivar</Button>
@@ -987,17 +1084,16 @@ export function BoxDetailPage() {
                         <div className="w-9 h-14 flex items-center justify-center text-xs text-gray-400 font-mono flex-shrink-0">{String.fromCharCode(65 + r)}</div>
                         {Array.from({ length: cols }, (_, c) => {
                           const sample = sampleMap[`${r + 1}_${c + 1}`];
-                          const cellStatus = sample ? sample.status : 'empty';
                           const label = positionLabel(r + 1, c + 1);
                           return (
                             <button
                               key={c}
                               onClick={() => handleCellClick(r + 1, c + 1)}
                               title={sample ? `${sample.sample_code} | ${sample.sample_type} | ${sample.status}` : `${label} — vacío`}
-                              className={`w-16 h-16 rounded border text-xs font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${CELL_BG[cellStatus] || CELL_BG.empty}`}
+                              className={`w-16 h-16 rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${sample ? typeCellClass(sample.sample_type, sampleTypes) : CELL_BG.empty}`}
                             >
                               {sample ? (
-                                <span className="text-white text-[9px] font-semibold leading-tight px-0.5 text-center break-all">{sample.sample_code}</span>
+                                <span className="text-[11px] font-bold leading-tight px-1 text-center break-all">{sample.sample_code}</span>
                               ) : (
                                 <Plus className="w-4 h-4 text-gray-200" />
                               )}
@@ -1011,29 +1107,46 @@ export function BoxDetailPage() {
 
                 {/* Legend */}
                 <div className="flex items-center gap-5 mt-5 flex-wrap border-t border-gray-100 pt-4">
-                  {[
-                    { label: 'Activo', color: 'bg-green-500' },
-                    { label: 'Usado', color: 'bg-yellow-400' },
-                    { label: 'Descartado', color: 'bg-red-500' },
-                    { label: 'Archivado', color: 'bg-gray-400' },
-                    { label: 'Contaminado', color: 'bg-red-900' },
-                    { label: 'Vacío', color: 'bg-white border border-gray-300' },
-                  ].map(({ label, color }) => (
-                    <span key={label} className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <span className={`w-3 h-3 rounded ${color}`} /> {label}
+                  {legendSampleTypes.map((type) => (
+                    <span key={type} className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <span className={`w-3 h-3 rounded ${typeCellClass(type, sampleTypes)}`} /> {labelOption(type, SAMPLE_TYPE_LABEL)}
                     </span>
                   ))}
+                  <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <span className="w-3 h-3 rounded bg-white border border-gray-300" /> Vacío
+                  </span>
                 </div>
               </div>
 
               {/* ── SAMPLES TABLE BELOW GRID ── */}
               <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <FlaskConical className="w-4 h-4 text-gray-400" />
                     <span className="text-sm font-semibold text-gray-700">Muestras en esta caja</span>
                     <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{sortedSamples.length}</span>
                   </div>
+                  {selectedBoxIds.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-blue-700 font-medium">{selectedBoxIds.length} seleccionada{selectedBoxIds.length !== 1 ? 's' : ''}</span>
+                      <button onClick={clearSelect} className="text-xs text-gray-400 hover:text-gray-700">Limpiar</button>
+                      <Button onClick={() => { setFormError(''); setShowBulkDialog(true); }} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                        <Pencil className="w-3.5 h-3.5" /> Editar grupo
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (confirm(`¿Quitar ${selectedBoxIds.length} muestra${selectedBoxIds.length !== 1 ? 's' : ''} de esta caja?`)) {
+                            removeSelectedFromBoxMutation.mutate(selectedBoxIds);
+                          }
+                        }}
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                      >
+                        <X className="w-3.5 h-3.5" /> Quitar de caja
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {sortedSamples.length === 0 ? (
                   <div className="px-6 py-12 text-center">
@@ -1046,6 +1159,14 @@ export function BoxDetailPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/60">
+                          <th className="px-4 py-2.5 w-10">
+                            <input
+                              type="checkbox"
+                              checked={allBoxSamplesSelected}
+                              onChange={(e) => e.target.checked ? selectAllBoxSamples() : clearSelect()}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                            />
+                          </th>
                           {['Posición', 'Código', 'Paciente', 'Proyecto', 'Tipo', 'Estado', 'Volumen'].map((h) => (
                             <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 whitespace-nowrap">{h}</th>
                           ))}
@@ -1055,16 +1176,24 @@ export function BoxDetailPage() {
                         {sortedSamples.map((s) => (
                           <tr
                             key={s.id}
-                            onClick={() => { setSelectedSample(s); setShowDetailDialog(true); }}
+                            onClick={() => openSampleDetail(s)}
                             className="border-b border-gray-50 hover:bg-blue-50/30 cursor-pointer transition-colors"
                           >
+                            <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selected.has(s.id)}
+                                onChange={() => toggleSelect(s.id)}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                              />
+                            </td>
                             <td className="px-4 py-2.5">
                               <span className="font-mono text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{s.position_label}</span>
                             </td>
                             <td className="px-4 py-2.5 font-mono text-sm text-gray-900 font-medium">{s.sample_code}</td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{s.patient_code || <span className="text-gray-300">—</span>}</td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{s.project || <span className="text-gray-300">—</span>}</td>
-                            <td className="px-4 py-2.5 text-sm text-gray-600 capitalize">{s.sample_type}</td>
+                            <td className="px-4 py-2.5 text-sm text-gray-600">{labelOption(s.sample_type, SAMPLE_TYPE_LABEL)}</td>
                             <td className="px-4 py-2.5">
                               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[s.status] || 'bg-gray-100 text-gray-500'}`}>
                                 {STATUS_LABEL[s.status] || s.status}
@@ -1117,7 +1246,7 @@ export function BoxDetailPage() {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      {SHEET_COLS.map((col) => (
+                      {sheetCols.map((col) => (
                         <th key={col.key} style={{ minWidth: col.minW }} className="text-left text-xs font-semibold text-gray-500 px-3 py-2.5 border-r border-gray-100 last:border-r-0 whitespace-nowrap">
                           {col.label}
                         </th>
@@ -1136,7 +1265,7 @@ export function BoxDetailPage() {
                           key={sr.position_label}
                           className={`border-b border-gray-100 transition-colors ${isNew && !isDirty ? 'bg-gray-50/40 hover:bg-gray-50' : isDirty ? 'bg-amber-50/40' : 'hover:bg-blue-50/20'}`}
                         >
-                          {SHEET_COLS.map((col, colIdx) => {
+                          {sheetCols.map((col, colIdx) => {
                             const val = (sr as any)[col.key] as string;
                             // editable column index among editable cols (excluding readonly)
                             const editableColIdx = EDITABLE_COLS.findIndex((c) => c.key === col.key);
@@ -1240,13 +1369,13 @@ export function BoxDetailPage() {
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Tipo *</label>
                 <select value={form.sample_type} onChange={(e) => f('sample_type', e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {SAMPLE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {sampleTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Estado</label>
                 <select value={form.status} onChange={(e) => f('status', e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
+                  {statuses.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
                 </select>
               </div>
             </div>
@@ -1258,7 +1387,7 @@ export function BoxDetailPage() {
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Unidad</label>
                 <select value={form.units} onChange={(e) => f('units', e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                  {units.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
@@ -1293,7 +1422,7 @@ export function BoxDetailPage() {
                 <div className="text-right">
                   <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Estado</p>
                   <select value={editForm.status} onChange={(e) => setEditForm(p => ({...p, status: e.target.value as SampleStatus}))} className="text-sm border rounded-full px-3 py-1 mt-1 bg-white">
-                    {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                    {statuses.map(s => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
                   </select>
                 </div>
               </div>
@@ -1301,12 +1430,12 @@ export function BoxDetailPage() {
               {/* Details grid */}
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { label: 'Tipo', key: 'sample_type', type: 'select', options: SAMPLE_TYPES },
+                  { label: 'Tipo', key: 'sample_type', type: 'select', options: sampleTypes },
                   { label: 'Subtipo', key: 'subtype', type: 'text' },
                   { label: 'Paciente', key: 'patient_code', type: 'text' },
                   { label: 'Proyecto', key: 'project', type: 'text' },
                   { label: 'Volumen', key: 'volume', type: 'number' },
-                  { label: 'Unidad', key: 'units', type: 'select', options: UNITS },
+                  { label: 'Unidad', key: 'units', type: 'select', options: units },
                   { label: 'Máx. descongelaciones', key: 'max_thaws', type: 'number' },
                 ].map(({ label, key, type, options }) => (
                   <div key={label} className="space-y-1">
@@ -1364,6 +1493,72 @@ export function BoxDetailPage() {
             </div>
           )}
 
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BULK EDIT DIALOG ── */}
+      <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar {selectedBoxIds.length} muestras</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{formError}</p>}
+            <p className="text-sm text-gray-500">Marca los campos que quieres aplicar. El código de muestra no se edita en grupo.</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ['patient_code', 'Paciente', 'text'],
+                ['subject_code', 'Sujeto', 'text'],
+                ['project', 'Proyecto', 'text'],
+                ['subtype', 'Subtipo', 'text'],
+                ['volume', 'Volumen', 'number'],
+                ['concentration', 'Concentración', 'number'],
+                ['freeze_date', 'Fecha congelación', 'date'],
+                ['collection_date', 'Fecha extracción', 'date'],
+                ['max_thaws', 'Máx. descong.', 'number'],
+                ['notes', 'Notas', 'text'],
+              ].map(([key, label, type]) => (
+                <label key={key} className="space-y-1">
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input type="checkbox" checked={!!bulkApply[key]} onChange={() => toggleBulkField(key)} className="rounded border-gray-300 text-blue-600" />
+                    {label}
+                  </span>
+                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="border-gray-300 disabled:opacity-40" />
+                </label>
+              ))}
+              <label className="space-y-1">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input type="checkbox" checked={!!bulkApply.sample_type} onChange={() => toggleBulkField('sample_type')} className="rounded border-gray-300 text-blue-600" />
+                  Tipo
+                </span>
+                <select value={bulkForm.sample_type} onChange={(e) => bf('sample_type', e.target.value)} disabled={!bulkApply.sample_type} className={selectClass}>
+                  {sampleTypes.map((t) => <option key={t} value={t}>{labelOption(t, SAMPLE_TYPE_LABEL)}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input type="checkbox" checked={!!bulkApply.status} onChange={() => toggleBulkField('status')} className="rounded border-gray-300 text-blue-600" />
+                  Estado
+                </span>
+                <select value={bulkForm.status} onChange={(e) => bf('status', e.target.value)} disabled={!bulkApply.status} className={selectClass}>
+                  {statuses.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input type="checkbox" checked={!!bulkApply.units} onChange={() => toggleBulkField('units')} className="rounded border-gray-300 text-blue-600" />
+                  Unidades
+                </span>
+                <select value={bulkForm.units} onChange={(e) => bf('units', e.target.value)} disabled={!bulkApply.units} className={selectClass}>
+                  {units.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowBulkDialog(false)} className="flex-1 border-gray-300">Cancelar</Button>
+              <Button onClick={() => bulkUpdateMutation.mutate()} disabled={bulkUpdateMutation.isPending} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Aplicar cambios</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

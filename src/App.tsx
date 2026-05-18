@@ -3,7 +3,6 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { BoxesPage } from './pages/BoxesPage';
 import { FreezersPage } from './pages/FreezersPage';
-import { SamplesPage } from './pages/SamplesPage';
 import { SearchPage } from './pages/SearchPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -26,7 +25,7 @@ function App() {
               <Route path="/freezers/:id" element={<FreezerDetailPage />} />
               <Route path="/freezers/:freezerId/box/:boxId" element={<BoxDetailPage />} />
               <Route path="/boxes" element={<BoxesPage />} />
-              <Route path="/samples" element={<SamplesPage />} />
+              <Route path="/samples" element={<Navigate to="/search" replace />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />

@@ -26,6 +26,7 @@ import {
   X,
   Upload,
 } from 'lucide-react';
+import { BOX_STATUS_LABEL, BOX_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
 import type { Box, Freezer, Rack } from '@/types';
 
 interface BoxWithContext extends Box {
@@ -87,7 +88,7 @@ function StatusBadge({ status }: { status: string }) {
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || 'bg-gray-100 text-gray-500'}`}>
-      {labels[status] || status}
+      {labels[status] || labelOption(status, BOX_STATUS_LABEL)}
     </span>
   );
 }
@@ -99,6 +100,7 @@ export function BoxesPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
 
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [freezerFilter, setFreezerFilter] = useState<string>('all');
@@ -196,7 +198,7 @@ export function BoxesPage() {
         rows: parseInt(data.rows) || 9,
         columns: parseInt(data.columns) || 9,
         box_type: data.box_type,
-        status: 'active' as const,
+        status: settingsOptions.defaultBoxStatus,
         occupancy: 0,
         archived: false,
         shelf_number: data.shelf_number ? parseInt(data.shelf_number) : null,
@@ -244,7 +246,13 @@ export function BoxesPage() {
   };
 
   const openAddDialog = () => {
-    setForm({ ...emptyBoxForm, freezer_id: freezers[0]?.id || '' });
+    setForm({
+      ...emptyBoxForm,
+      freezer_id: freezers[0]?.id || '',
+      rows: String(settingsOptions.defaultBoxRows),
+      columns: String(settingsOptions.defaultBoxColumns),
+      box_type: settingsOptions.defaultBoxType,
+    });
     setFormError('');
     setShowAddDialog(true);
   };
@@ -282,14 +290,6 @@ export function BoxesPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                className="border-gray-300 text-gray-600 hover:bg-gray-50"
-                disabled
-              >
-                <Upload className="w-4 h-4" />
-                Importar CSV
-              </Button>
               <Button
                 onClick={openAddDialog}
                 className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white"
@@ -349,9 +349,9 @@ export function BoxesPage() {
               className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">Todos los estados</option>
-              <option value="active">Activo</option>
-              <option value="full">Llena</option>
-              <option value="archived">Archivada</option>
+              {settingsOptions.boxStatuses.map((status) => (
+                <option key={status} value={status}>{labelOption(status, BOX_STATUS_LABEL)}</option>
+              ))}
             </select>
             {uniqueTemps.length > 1 && (
               <select
@@ -670,6 +670,19 @@ export function BoxesPage() {
                   className="border-gray-300 text-gray-900"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Tipo de caja</label>
+              <select
+                value={form.box_type}
+                onChange={(e) => setForm({ ...form, box_type: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {settingsOptions.boxTypes.map((type) => (
+                  <option key={type} value={type}>{labelOption(type, BOX_TYPE_LABEL)}</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">

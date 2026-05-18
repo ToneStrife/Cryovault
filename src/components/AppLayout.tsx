@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { LayoutGrid, FlaskConical, Search, ChartBar as BarChart3, Settings, Users, LogOut, Menu, X, Snowflake, Package2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, Search, ChartBar as BarChart3, Settings, Users, LogOut, Menu, X, Snowflake, Package2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -11,7 +11,6 @@ const menuItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
   { label: 'Freezers', href: '/freezers', icon: Snowflake },
   { label: 'Cajas', href: '/boxes', icon: Package2 },
-  { label: 'Muestras', href: '/samples', icon: FlaskConical },
   { label: 'Búsqueda', href: '/search', icon: Search },
   { label: 'Informes', href: '/reports', icon: BarChart3 },
   { label: 'Ajustes', href: '/settings', icon: Settings },

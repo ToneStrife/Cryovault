@@ -1,11 +1,11 @@
 /* CryoVault - Type definitions for all database entities */
 
-export type UserRole = 'admin' | 'researcher' | 'technician' | 'read_only';
-export type SampleType = 'tissue' | 'blood' | 'serum' | 'plasma' | 'urine' | 'csf' | 'saliva' | 'dna' | 'rna' | 'protein' | 'other';
-export type SampleStatus = 'active' | 'used' | 'discarded' | 'archived' | 'contaminated';
-export type BoxType = 'standard' | 'microtube' | 'sample_vial' | 'other';
-export type BoxStatus = 'active' | 'full' | 'archived' | 'retired';
-export type UnitType = 'mL' | 'µL' | 'mg' | 'µg' | 'ng' | 'mol/L' | '%' | 'other';
+export type UserRole = 'super_admin' | 'admin' | 'researcher' | 'technician' | 'read_only';
+export type SampleType = string;
+export type SampleStatus = string;
+export type BoxType = string;
+export type BoxStatus = string;
+export type UnitType = string;
 export type AuditAction = 'create' | 'update' | 'delete' | 'move';
 export type AuditEntityType = 'freezer' | 'box' | 'sample' | 'rack' | 'profile' | 'settings';
 
@@ -16,6 +16,15 @@ export interface Profile {
   role: UserRole;
   laboratory: string;
   avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Laboratory {
+  id: string;
+  name: string;
+  slug: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,14 +45,38 @@ export interface Freezer {
   created_by: string;
 }
 
+export interface FreezerZone {
+  id: string;
+  freezer_id: string;
+  zone_number: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RackZone {
+  id: string;
+  rack_id: string;
+  zone_number: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Rack {
   id: string;
   freezer_id: string;
   name: string;
+  description: string | null;
   shelf_number: number;
   rows: number;
   columns: number;
   slot_count: number;
+  shelf_count: number;
+  slots_per_shelf: number;
+  image_url: string | null;
   created_at: string;
   created_by: string;
 }
@@ -53,6 +86,7 @@ export interface Box {
   freezer_id: string;
   rack_id: string | null;
   shelf_number: number | null;
+  rack_shelf_number: number | null;
   name: string;
   description: string | null;
   rows: number;
@@ -123,10 +157,19 @@ export interface Settings {
   id: string;
   laboratory: string;
   default_sample_type: SampleType;
+  default_sample_status: SampleStatus;
   default_temperature: number;
   default_box_rows: number;
   default_box_columns: number;
+  default_box_type: BoxType;
+  default_box_status: BoxStatus;
   default_max_thaws: number;
+  default_units: UnitType;
+  sample_types: SampleType[] | null;
+  sample_statuses: SampleStatus[] | null;
+  box_types: BoxType[] | null;
+  box_statuses: BoxStatus[] | null;
+  unit_types: UnitType[] | null;
   language: 'es' | 'en' | 'pt';
   created_at: string;
   updated_at: string;

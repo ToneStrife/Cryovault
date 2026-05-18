@@ -1,20 +1,15 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Input } from '@/components/ui/input';
-import { Search, Filter, X, ArrowRight, ChevronDown, Thermometer } from 'lucide-react';
-import type { Sample, SampleType, SampleStatus, Freezer } from '@/types';
-
-const STATUS_LABEL: Record<string, string> = {
-  active: 'Activo',
-  used: 'Usado',
-  discarded: 'Descartado',
-  archived: 'Archivado',
-  contaminated: 'Contaminado',
-};
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Search, Filter, X, ArrowRight, ChevronDown, Thermometer, Trash2, RotateCcw, Pencil } from 'lucide-react';
+import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
+import type { Sample, SampleType, SampleStatus, UnitType, Freezer } from '@/types';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
@@ -23,16 +18,6 @@ const STATUS_COLORS: Record<string, string> = {
   archived: 'bg-gray-100 text-gray-500',
   contaminated: 'bg-red-900/10 text-red-800',
 };
-
-const TYPE_LABEL: Record<string, string> = {
-  tissue: 'Tejido', blood: 'Sangre', serum: 'Suero', plasma: 'Plasma',
-  urine: 'Orina', csf: 'LCR', saliva: 'Saliva', dna: 'DNA', rna: 'RNA',
-  protein: 'Proteína', other: 'Otro',
-};
-
-const SAMPLE_TYPES: SampleType[] = [
-  'tissue', 'blood', 'serum', 'plasma', 'urine', 'csf', 'saliva', 'dna', 'rna', 'protein', 'other',
-];
 
 const TEMP_OPTIONS = [
   { value: '-196', label: '-196°C (LN)' },
@@ -43,6 +28,11 @@ const TEMP_OPTIONS = [
 
 export function SearchPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
+  const sampleTypes = settingsOptions.sampleTypes;
+  const statuses = settingsOptions.sampleStatuses;
+  const units = settingsOptions.unitTypes;
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -57,6 +47,22 @@ export function SearchPage() {
   const [maxThaws, setMaxThaws] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editTarget, setEditTarget] = useState<(Sample & { deleted_at?: string | null }) | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [editForm, setEditForm] = useState({
+    sample_code: '', patient_code: '', subject_code: '', project: '', sample_type: 'blood' as SampleType,
+    subtype: '', volume: '', units: 'mL' as UnitType, concentration: '', status: 'active' as SampleStatus,
+    freeze_date: '', collection_date: '', max_thaws: '3', notes: '',
+  });
+  const [bulkApply, setBulkApply] = useState<Record<string, boolean>>({});
+  const [bulkForm, setBulkForm] = useState({
+    patient_code: '', subject_code: '', project: '', sample_type: 'blood' as SampleType,
+    subtype: '', volume: '', units: 'mL' as UnitType, concentration: '', status: 'active' as SampleStatus,
+    freeze_date: '', collection_date: '', max_thaws: '', notes: '',
+  });
 
   const { data: samples = [], isLoading } = useQuery({
     queryKey: ['samples-search'],
@@ -172,6 +178,117 @@ export function SearchPage() {
     setShowDeleted(false);
   };
 
+  const openEdit = (s: Sample & { deleted_at?: string | null }) => {
+    setEditTarget(s);
+    setEditForm({
+      sample_code: s.sample_code,
+      patient_code: s.patient_code || '',
+      subject_code: s.subject_code || '',
+      project: s.project || '',
+      sample_type: s.sample_type as SampleType,
+      subtype: s.subtype || '',
+      volume: s.volume !== null ? String(s.volume) : '',
+      units: s.units as UnitType,
+      concentration: s.concentration !== null ? String(s.concentration) : '',
+      status: s.status as SampleStatus,
+      freeze_date: s.freeze_date || '',
+      collection_date: s.collection_date || '',
+      max_thaws: String(s.max_thaws),
+      notes: s.notes || '',
+    });
+    setFormError('');
+    setShowEditDialog(true);
+  };
+
+  const closeEdit = () => { setShowEditDialog(false); setEditTarget(null); setFormError(''); };
+  const f = (field: keyof typeof editForm, val: string) => setEditForm((prev) => ({ ...prev, [field]: val }));
+  const bf = (field: keyof typeof bulkForm, val: string) => setBulkForm((prev) => ({ ...prev, [field]: val }));
+  const toggleBulkField = (field: string) => setBulkApply((prev) => ({ ...prev, [field]: !prev[field] }));
+  const selectedIds = Array.from(selected);
+  const toggleSelect = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const selectAllFiltered = () => setSelected(new Set(filtered.map((s) => s.id)));
+  const clearSelect = () => setSelected(new Set());
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!editTarget) throw new Error('No hay muestra seleccionada');
+      const payload = {
+        sample_code: editForm.sample_code.trim(),
+        patient_code: editForm.patient_code.trim() || null,
+        subject_code: editForm.subject_code.trim() || null,
+        project: editForm.project.trim() || null,
+        sample_type: editForm.sample_type,
+        subtype: editForm.subtype.trim() || null,
+        volume: editForm.volume ? parseFloat(editForm.volume) : null,
+        units: editForm.units,
+        concentration: editForm.concentration ? parseFloat(editForm.concentration) : null,
+        status: editForm.status,
+        freeze_date: editForm.freeze_date || null,
+        collection_date: editForm.collection_date || null,
+        max_thaws: parseInt(editForm.max_thaws) || 3,
+        notes: editForm.notes.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await (supabase.from('samples') as any).update(payload).eq('id', editTarget.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['samples-search'] }); closeEdit(); },
+    onError: (e: any) => setFormError(e.message),
+  });
+
+  const softDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await (supabase.from('samples') as any)
+        .update({ deleted_at: new Date().toISOString(), deleted_by: user!.id })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['samples-search'] }); clearSelect(); },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await (supabase.from('samples') as any)
+        .update({ deleted_at: null, deleted_by: null })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['samples-search'] }); clearSelect(); },
+  });
+
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (bulkApply.patient_code) payload.patient_code = bulkForm.patient_code.trim() || null;
+      if (bulkApply.subject_code) payload.subject_code = bulkForm.subject_code.trim() || null;
+      if (bulkApply.project) payload.project = bulkForm.project.trim() || null;
+      if (bulkApply.sample_type) payload.sample_type = bulkForm.sample_type;
+      if (bulkApply.subtype) payload.subtype = bulkForm.subtype.trim() || null;
+      if (bulkApply.volume) payload.volume = bulkForm.volume ? parseFloat(bulkForm.volume) : null;
+      if (bulkApply.units) payload.units = bulkForm.units;
+      if (bulkApply.concentration) payload.concentration = bulkForm.concentration ? parseFloat(bulkForm.concentration) : null;
+      if (bulkApply.status) payload.status = bulkForm.status;
+      if (bulkApply.freeze_date) payload.freeze_date = bulkForm.freeze_date || null;
+      if (bulkApply.collection_date) payload.collection_date = bulkForm.collection_date || null;
+      if (bulkApply.max_thaws) payload.max_thaws = parseInt(bulkForm.max_thaws) || 3;
+      if (bulkApply.notes) payload.notes = bulkForm.notes.trim() || null;
+      if (Object.keys(payload).length === 1) throw new Error('Selecciona al menos un campo');
+      const { error } = await (supabase.from('samples') as any).update(payload).in('id', selectedIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['samples-search'] });
+      setShowBulkDialog(false);
+      setBulkApply({});
+      clearSelect();
+    },
+    onError: (e: any) => setFormError(e.message),
+  });
+
   const selectClass = 'w-full appearance-none pl-3 pr-7 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
@@ -231,7 +348,7 @@ export function SearchPage() {
                     <div className="relative">
                       <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={selectClass}>
                         <option value="">Todos los tipos</option>
-                        {SAMPLE_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
+                        {sampleTypes.map((t) => <option key={t} value={t}>{labelOption(t, SAMPLE_TYPE_LABEL)}</option>)}
                       </select>
                       <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
                     </div>
@@ -242,7 +359,7 @@ export function SearchPage() {
                       <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
                         <option value="">Todos los estados</option>
                         {(['active', 'used', 'discarded', 'archived', 'contaminated'] as SampleStatus[]).map((s) => (
-                          <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                          <option key={s} value={s}>{labelOption(s, SAMPLE_STATUS_LABEL)}</option>
                         ))}
                       </select>
                       <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
@@ -341,10 +458,28 @@ export function SearchPage() {
           </div>
 
           {/* Results header */}
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 gap-3">
             <p className="text-gray-500 text-sm">
               {isLoading ? 'Cargando...' : `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`}
             </p>
+            {selected.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-blue-700 font-medium">{selected.size} seleccionada{selected.size !== 1 ? 's' : ''}</span>
+                <button onClick={clearSelect} className="text-xs text-gray-400 hover:text-gray-700">Limpiar</button>
+                <Button onClick={() => { setFormError(''); setShowBulkDialog(true); }} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <Pencil className="w-3.5 h-3.5" /> Editar grupo
+                </Button>
+                {!showDeleted ? (
+                  <Button onClick={() => softDeleteMutation.mutate(selectedIds)} size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                    <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                  </Button>
+                ) : (
+                  <Button onClick={() => restoreMutation.mutate(selectedIds)} size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50">
+                    <RotateCcw className="w-3.5 h-3.5" /> Restaurar
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Results table */}
@@ -365,6 +500,14 @@ export function SearchPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={filtered.length > 0 && selected.size === filtered.length}
+                        onChange={(e) => e.target.checked ? selectAllFiltered() : clearSelect()}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                      />
+                    </th>
                     <th className="text-left text-xs text-gray-500 font-semibold px-4 py-3">Código</th>
                     <th className="text-left text-xs text-gray-500 font-semibold px-4 py-3">Tipo</th>
                     <th className="text-left text-xs text-gray-500 font-semibold px-4 py-3 hidden sm:table-cell">Proyecto</th>
@@ -384,14 +527,23 @@ export function SearchPage() {
                     return (
                       <tr
                         key={s.id}
-                        className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${isDeleted ? 'opacity-50' : ''}`}
+                        onClick={() => !isDeleted && openEdit(s)}
+                        className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer ${isDeleted ? 'opacity-50' : ''}`}
                       >
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(s.id)}
+                            onChange={() => toggleSelect(s.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <p className="text-gray-900 font-mono text-sm font-medium">{s.sample_code}</p>
                           {s.patient_code && <p className="text-gray-400 text-xs">P: {s.patient_code}</p>}
                           {isDeleted && <p className="text-red-400 text-[10px] font-medium">Eliminada</p>}
                         </td>
-                        <td className="px-4 py-3 text-gray-600 text-sm">{TYPE_LABEL[s.sample_type] || s.sample_type}</td>
+                        <td className="px-4 py-3 text-gray-600 text-sm">{labelOption(s.sample_type, SAMPLE_TYPE_LABEL)}</td>
                         <td className="px-4 py-3 hidden sm:table-cell text-gray-500 text-sm">{s.project || '—'}</td>
                         <td className="px-4 py-3 hidden md:table-cell text-gray-500 text-sm">
                           {fz ? (
@@ -416,13 +568,14 @@ export function SearchPage() {
                         </td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[s.status] || 'bg-gray-100 text-gray-500'}`}>
-                            {STATUS_LABEL[s.status] || s.status}
+                            {labelOption(s.status, SAMPLE_STATUS_LABEL)}
                           </span>
                         </td>
                         <td className="px-4 py-3">
                           {boxEntry && !isDeleted && (
                             <Link
                               to={`/freezers/${boxEntry.freezer_id}/box/${s.box_id}`}
+                              onClick={(e) => e.stopPropagation()}
                               className="p-1.5 text-gray-400 hover:text-blue-600 rounded inline-flex"
                               title="Ir a la caja"
                             >
@@ -439,6 +592,88 @@ export function SearchPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Editar muestra</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-2">
+            {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{formError}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 col-span-2">
+                <label className="text-sm font-medium text-gray-700">Código</label>
+                <Input value={editForm.sample_code} onChange={(e) => f('sample_code', e.target.value)} className="border-gray-300 font-mono" />
+              </div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Paciente</label><Input value={editForm.patient_code} onChange={(e) => f('patient_code', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Sujeto</label><Input value={editForm.subject_code} onChange={(e) => f('subject_code', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Proyecto</label><Input value={editForm.project} onChange={(e) => f('project', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Subtipo</label><Input value={editForm.subtype} onChange={(e) => f('subtype', e.target.value)} className="border-gray-300" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Tipo</label><select value={editForm.sample_type} onChange={(e) => f('sample_type', e.target.value)} className={selectClass}>{sampleTypes.map((t) => <option key={t} value={t}>{labelOption(t, SAMPLE_TYPE_LABEL)}</option>)}</select></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Estado</label><select value={editForm.status} onChange={(e) => f('status', e.target.value)} className={selectClass}>{statuses.map((s) => <option key={s} value={s}>{labelOption(s, SAMPLE_STATUS_LABEL)}</option>)}</select></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Volumen</label><Input type="number" step="0.001" value={editForm.volume} onChange={(e) => f('volume', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Unidades</label><select value={editForm.units} onChange={(e) => f('units', e.target.value)} className={selectClass}>{units.map((u) => <option key={u} value={u}>{u}</option>)}</select></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Concentración</label><Input type="number" step="0.001" value={editForm.concentration} onChange={(e) => f('concentration', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Máx. descong.</label><Input type="number" min={1} value={editForm.max_thaws} onChange={(e) => f('max_thaws', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Fecha congelación</label><Input type="date" value={editForm.freeze_date} onChange={(e) => f('freeze_date', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Fecha extracción</label><Input type="date" value={editForm.collection_date} onChange={(e) => f('collection_date', e.target.value)} className="border-gray-300" /></div>
+            </div>
+            <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Notas</label><Input value={editForm.notes} onChange={(e) => f('notes', e.target.value)} className="border-gray-300" /></div>
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={closeEdit} className="flex-1 border-gray-300">Cancelar</Button>
+              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Guardar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Editar {selected.size} muestras</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-2">
+            {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{formError}</p>}
+            <p className="text-sm text-gray-500">Marca los campos que quieres aplicar. El código de muestra no se edita en grupo.</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ['patient_code', 'Paciente', 'text'],
+                ['subject_code', 'Sujeto', 'text'],
+                ['project', 'Proyecto', 'text'],
+                ['subtype', 'Subtipo', 'text'],
+                ['volume', 'Volumen', 'number'],
+                ['concentration', 'Concentración', 'number'],
+                ['freeze_date', 'Fecha congelación', 'date'],
+                ['collection_date', 'Fecha extracción', 'date'],
+                ['max_thaws', 'Máx. descong.', 'number'],
+                ['notes', 'Notas', 'text'],
+              ].map(([key, label, type]) => (
+                <label key={key} className="space-y-1">
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input type="checkbox" checked={!!bulkApply[key]} onChange={() => toggleBulkField(key)} className="rounded border-gray-300 text-blue-600" />
+                    {label}
+                  </span>
+                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="border-gray-300 disabled:opacity-40" />
+                </label>
+              ))}
+              <label className="space-y-1">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" checked={!!bulkApply.sample_type} onChange={() => toggleBulkField('sample_type')} className="rounded border-gray-300 text-blue-600" />Tipo</span>
+                <select value={bulkForm.sample_type} onChange={(e) => bf('sample_type', e.target.value)} disabled={!bulkApply.sample_type} className={`${selectClass} disabled:opacity-40`}>{sampleTypes.map((t) => <option key={t} value={t}>{labelOption(t, SAMPLE_TYPE_LABEL)}</option>)}</select>
+              </label>
+              <label className="space-y-1">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" checked={!!bulkApply.status} onChange={() => toggleBulkField('status')} className="rounded border-gray-300 text-blue-600" />Estado</span>
+                <select value={bulkForm.status} onChange={(e) => bf('status', e.target.value)} disabled={!bulkApply.status} className={`${selectClass} disabled:opacity-40`}>{statuses.map((s) => <option key={s} value={s}>{labelOption(s, SAMPLE_STATUS_LABEL)}</option>)}</select>
+              </label>
+              <label className="space-y-1">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" checked={!!bulkApply.units} onChange={() => toggleBulkField('units')} className="rounded border-gray-300 text-blue-600" />Unidades</span>
+                <select value={bulkForm.units} onChange={(e) => bf('units', e.target.value)} disabled={!bulkApply.units} className={`${selectClass} disabled:opacity-40`}>{units.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+              </label>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowBulkDialog(false)} className="flex-1 border-gray-300">Cancelar</Button>
+              <Button onClick={() => bulkUpdateMutation.mutate()} disabled={bulkUpdateMutation.isPending} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Aplicar cambios</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

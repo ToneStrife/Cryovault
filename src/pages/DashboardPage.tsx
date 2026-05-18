@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Snowflake, Package2, FlaskConical, TrendingUp, ArrowRight, Clock, Search, X, QrCode } from 'lucide-react';
 import { QrScannerDialog } from '@/components/QrScannerDialog';
+import { formatAuditLog, makeUserMap } from '@/lib/auditFormat';
 
 const TYPE_COLORS: Record<string, string> = {
   blood: '#ef4444', serum: '#f97316', plasma: '#eab308', tissue: '#22c55e',
@@ -91,6 +92,15 @@ export function DashboardPage() {
     enabled: !!user,
   });
 
+  const { data: auditProfiles = [] } = useQuery({
+    queryKey: ['audit-profiles-dashboard'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name, email');
+      return (data || []) as { id: string; full_name: string | null; email: string | null }[];
+    },
+    enabled: !!user,
+  });
+
   const recentSamplesQuery = useQuery({
     queryKey: ['recent-samples'],
     queryFn: async () => {
@@ -139,8 +149,8 @@ export function DashboardPage() {
   const statCards = [
     { label: 'Congeladores', value: stats?.totalFreezers ?? 0, icon: Snowflake, color: 'blue', href: '/freezers' },
     { label: 'Cajas', value: stats?.totalBoxes ?? 0, icon: Package2, color: 'cyan', href: '/boxes' },
-    { label: 'Muestras totales', value: stats?.totalSamples ?? 0, icon: FlaskConical, color: 'green', href: '/samples' },
-    { label: 'Muestras activas', value: stats?.activeSamples ?? 0, icon: TrendingUp, color: 'orange', href: '/samples' },
+    { label: 'Muestras totales', value: stats?.totalSamples ?? 0, icon: FlaskConical, color: 'green', href: '/search' },
+    { label: 'Muestras activas', value: stats?.activeSamples ?? 0, icon: TrendingUp, color: 'orange', href: '/search' },
   ];
 
   const cardColors: Record<string, string> = {
@@ -203,7 +213,7 @@ export function DashboardPage() {
                               setSearchOpen(false);
                               setQuickSearch('');
                               if (box) navigate(`/freezers/${box.freezer_id}/box/${s.box_id}`);
-                              else navigate('/samples');
+                              else navigate('/search');
                             }}
                             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 text-left transition-colors"
                           >
@@ -337,7 +347,7 @@ export function DashboardPage() {
           <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">Muestras recientes</h3>
-              <Link to="/samples" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+              <Link to="/search" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
                 Ver todas <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
@@ -374,20 +384,24 @@ export function DashboardPage() {
                 ? Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-11 bg-gray-100 animate-pulse rounded-lg" />)
                 : activityQuery.data?.length === 0
                 ? <p className="text-gray-400 text-sm py-4 text-center">Sin actividad registrada.</p>
-                : activityQuery.data?.map((log: any) => (
-                  <div key={log.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-gray-50">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold mt-0.5 uppercase tracking-wide ${
-                      log.action === 'create' ? 'bg-green-100 text-green-700' :
-                      log.action === 'update' ? 'bg-blue-100 text-blue-700' :
-                      log.action === 'delete' ? 'bg-red-100 text-red-700' :
-                      'bg-orange-100 text-orange-700'
-                    }`}>{log.action}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-700 capitalize">{log.entity_type} <span className="text-gray-400 font-mono text-xs">{log.entity_id.slice(0, 8)}...</span></p>
-                      <p className="text-xs text-gray-400">{new Date(log.created_at).toLocaleString('es-ES')}</p>
+                : activityQuery.data?.map((log: any) => {
+                  const formatted = formatAuditLog(log, makeUserMap(auditProfiles));
+                  return (
+                    <div key={log.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-gray-50">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold mt-0.5 uppercase tracking-wide ${
+                        log.action === 'create' ? 'bg-green-100 text-green-700' :
+                        log.action === 'update' ? 'bg-blue-100 text-blue-700' :
+                        log.action === 'delete' ? 'bg-red-100 text-red-700' :
+                        'bg-orange-100 text-orange-700'
+                      }`}>{log.action}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{formatted.title}</p>
+                        <p className="text-xs text-gray-400 truncate">{formatted.subtitle}</p>
+                        <p className="text-xs text-gray-400">{new Date(log.created_at).toLocaleString('es-ES')}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
         </div>
