@@ -60,23 +60,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initializeAuth()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[AuthContext] Auth state change: ${event}`)
+      console.log(`[AuthContext] Auth state change: ${event}, Session user: ${session?.user?.id}`)
       if (!isMounted) return
 
       try {
         if (session?.user) {
+          console.log("[AuthContext] Fetching profile for:", session.user.id)
           const profile = await fetchProfile(session.user.id)
+          console.log("[AuthContext] Profile result:", profile)
           setUser(profile)
+          setIsLoading(false) // <--- Añadido aquí explícitamente
         } else {
+          console.log("[AuthContext] No user in session")
           setUser(null)
+          setIsLoading(false) // <--- Añadido aquí explícitamente
         }
       } catch (error) {
-        console.error("[AuthContext] Error in onAuthStateChange:", error)
-        setUser(null)
-      } finally {
-        if (isMounted) setIsLoading(false)
-      }
-    })
+      console.error("[AuthContext] Error in onAuthStateChange:", error)
+      setUser(null)
+      setIsLoading(false)
+    }
+  })
 
     return () => {
       isMounted = false
