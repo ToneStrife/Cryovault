@@ -1,46 +1,50 @@
 "use client";
 
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
-import { Button } from '@/components/ui/button';
-import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core';
-import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
-import { ChevronLeft, Plus, Snowflake, Thermometer, Pencil, Layers, Package, LogOut, Grid3x3 } from 'lucide-react';
-import type { Freezer, Box as BoxType, Rack } from '@/types';
+import { Package2, Layers, Grid3x3 } from 'lucide-react';
+import type { Box as BoxType, Rack } from '@/types';
 
-// Componente para cajas arrastrables
-function DraggableBoxCard({ box, freezerId, onEdit, onUnassign }: { box: BoxType; freezerId: string; onEdit: (b: BoxType) => void; onUnassign: (id: string) => void }) {
+function BoxCard({ box }: { box: BoxType }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: box.id });
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className={`p-3 bg-white border border-gray-200 rounded-lg cursor-grab ${isDragging ? 'opacity-50' : ''}`}>
-      <p className="text-sm font-medium">{box.name}</p>
-      <div className="flex justify-between mt-2 text-xs text-gray-500">
-        <span>{box.rows}x{box.columns}</span>
-        <button onClick={(e) => { e.stopPropagation(); onUnassign(box.id); }} className="text-red-500">Sacar</button>
+    <div 
+      ref={setNodeRef} {...listeners} {...attributes}
+      className={`p-4 bg-white border border-gray-200 rounded-lg shadow-sm cursor-grab hover:shadow-md transition-all ${isDragging ? 'opacity-40' : ''}`}
+    >
+      <div className="flex items-center gap-3">
+        <Package2 className="w-5 h-5 text-blue-500" />
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{box.name}</p>
+          <p className="text-xs text-gray-500">{box.rows}x{box.columns} celdas</p>
+        </div>
       </div>
     </div>
   );
 }
 
-// Zona de caída para baldas y racks
-function DroppableZone({ id, children }: { id: string; children: React.ReactNode }) {
+function DropArea({ id, title, icon: Icon, children }: { id: string, title: string, icon: any, children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className={`p-4 rounded-xl transition-colors ${isOver ? 'bg-blue-100' : 'bg-gray-50'}`}>
-      {children}
+    <div ref={setNodeRef} className={`p-5 rounded-2xl border-2 transition-colors ${isOver ? 'border-blue-400 bg-blue-50' : 'border-dashed border-gray-200 bg-gray-50'}`}>
+      <div className="flex items-center gap-2 mb-4 text-gray-600">
+        <Icon className="w-4 h-4" />
+        <h3 className="font-medium text-sm uppercase tracking-wider">{title}</h3>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 min-h-[100px]">
+        {children}
+      </div>
     </div>
   );
 }
 
 export function FreezerDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeBoxId, setActiveBoxId] = useState<string | null>(null);
 
   const { data: boxes = [] } = useQuery({ queryKey: ['boxes', id], queryFn: async () => { const { data } = await supabase.from('boxes').select('*').eq('freezer_id', id!); return (data || []) as BoxType[]; }, enabled: !!id });
   const { data: racks = [] } = useQuery({ queryKey: ['racks', id], queryFn: async () => { const { data } = await (supabase.from('racks') as any).select('*').eq('freezer_id', id!); return (data || []) as Rack[]; }, enabled: !!id });
@@ -52,36 +56,37 @@ export function FreezerDetailPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['boxes', id] }),
   });
 
-  const handleDragEnd = (e: DragEndEvent) => {
+  const handleDragEnd = (e: any) => {
     const { active, over } = e;
     if (!over) return;
     const boxId = String(active.id);
     const target = String(over.id);
-    
     if (target.startsWith('shelf_')) {
       moveMutation.mutate({ boxId, shelfNumber: parseInt(target.replace('shelf_', '')), rackId: null });
     } else if (target.startsWith('rack_')) {
-      const rack = racks.find(r => r.id === target.replace('rack_', ''));
-      if (rack) moveMutation.mutate({ boxId, shelfNumber: rack.shelf_number, rackId: rack.id });
+      moveMutation.mutate({ boxId, shelfNumber: null, rackId: target.replace('rack_', '') });
     }
   };
 
   return (
     <AppLayout>
-      <DndContext onDragEnd={handleDragEnd}>
-        <div className="p-8">
-          {[1, 2, 3].map(shelf => (
-            <DroppableZone key={shelf} id={`shelf_${shelf}`}>
-              <h3 className="font-bold mb-2">Balda {shelf}</h3>
-              <div className="grid grid-cols-4 gap-4">
-                {boxes.filter(b => b.shelf_number === shelf && !b.rack_id).map(b => (
-                  <DraggableBoxCard key={b.id} box={b} freezerId={id!} onEdit={() => {}} onUnassign={() => moveMutation.mutate({ boxId: b.id, shelfNumber: null, rackId: null })} />
+      <div className="p-8 max-w-6xl mx-auto">
+        <h1 className="text-2xl font-bold mb-8">Organización del Congelador</h1>
+        <DndContext onDragEnd={handleDragEnd}>
+          <div className="space-y-8">
+            {[1, 2, 3].map(s => (
+              <DropArea key={s} id={`shelf_${s}`} title={`Balda ${s}`} icon={Layers}>
+                {boxes.filter(b => b.shelf_number === s && !b.rack_id).map(b => <BoxCard key={b.id} box={b} />)}
+                {racks.filter(r => r.shelf_number === s).map(rack => (
+                   <DropArea key={rack.id} id={`rack_${rack.id}`} title={rack.name} icon={Grid3x3}>
+                     {boxes.filter(b => b.rack_id === rack.id).map(b => <BoxCard key={b.id} box={b} />)}
+                   </DropArea>
                 ))}
-              </div>
-            </DroppableZone>
-          ))}
-        </div>
-      </DndContext>
+              </DropArea>
+            ))}
+          </div>
+        </DndContext>
+      </div>
     </AppLayout>
   );
 }
