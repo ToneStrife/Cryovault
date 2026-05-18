@@ -37,9 +37,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    let isMounted = true
+
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
+        if (!isMounted) return
+        
         if (session?.user) {
           const profile = await fetchProfile(session.user.id)
           setUser(profile)
@@ -49,13 +53,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         console.error("[AuthContext] Init error:", e)
       } finally {
-        setIsLoading(false)
+        if (isMounted) setIsLoading(false)
       }
     }
 
     initializeAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`[AuthContext] Auth state change: ${event}`)
+      if (!isMounted) return
+
       try {
         if (session?.user) {
           const profile = await fetchProfile(session.user.id)
@@ -67,11 +74,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("[AuthContext] Error in onAuthStateChange:", error)
         setUser(null)
       } finally {
-        setIsLoading(false)
+        if (isMounted) setIsLoading(false)
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
 
