@@ -1213,7 +1213,7 @@ export function BoxDetailPage() {
 
       {/* ── ADD SAMPLE DIALOG ── */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-gray-900">
               Añadir muestra en{' '}
@@ -1278,9 +1278,9 @@ export function BoxDetailPage() {
 
       {/* ── SAMPLE DETAIL DIALOG ── */}
       <Dialog open={showDetailDialog} onOpenChange={(open) => !open && setShowDetailDialog(false)}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-gray-900">Detalle de muestra</DialogTitle>
+            <DialogTitle className="text-gray-900 text-xl font-bold">Editar Muestra</DialogTitle>
           </DialogHeader>
           {selectedSample && (
             <div className="mt-2 space-y-6">
