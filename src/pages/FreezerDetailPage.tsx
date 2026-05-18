@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
+import { DndContext } from '@dnd-kit/core';
 import { supabase } from '@/lib/supabase';
 import { AppLayout } from '@/components/AppLayout';
 import { Package2, Layers, Grid3x3 } from 'lucide-react';
 import type { Box as BoxType, Rack } from '@/types';
 
+// Mantenemos tus componentes de diseño exactamente como estaban
 function BoxCard({ box }: { box: BoxType }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: box.id });
   return (
@@ -51,20 +51,28 @@ export function FreezerDetailPage() {
 
   const moveMutation = useMutation({
     mutationFn: async ({ boxId, shelfNumber, rackId }: { boxId: string; shelfNumber: number | null; rackId: string | null }) => {
-      await (supabase.from('boxes') as any).update({ shelf_number: shelfNumber, rack_id: rackId }).eq('id', boxId);
+      await (supabase.from('boxes') as any)
+        .update({ shelf_number: shelfNumber, rack_id: rackId })
+        .eq('id', boxId);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['boxes', id] }),
   });
 
-  const handleDragEnd = (e: any) => {
-    const { active, over } = e;
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
     if (!over) return;
-    const boxId = String(active.id);
-    const target = String(over.id);
-    if (target.startsWith('shelf_')) {
-      moveMutation.mutate({ boxId, shelfNumber: parseInt(target.replace('shelf_', '')), rackId: null });
-    } else if (target.startsWith('rack_')) {
-      moveMutation.mutate({ boxId, shelfNumber: null, rackId: target.replace('rack_', '') });
+
+    const boxId = active.id;
+    const targetId = over.id;
+
+    // Lógica para detectar si soltamos en Balda o Rack
+    if (targetId.startsWith('shelf_')) {
+      const shelfNumber = parseInt(targetId.split('_')[1]);
+      moveMutation.mutate({ boxId, shelfNumber, rackId: null });
+    } else if (targetId.startsWith('rack_')) {
+      const rackId = targetId.split('_')[1];
+      const rack = racks.find(r => r.id === rackId);
+      moveMutation.mutate({ boxId, shelfNumber: rack?.shelf_number || null, rackId });
     }
   };
 
