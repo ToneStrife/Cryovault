@@ -15,7 +15,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine, Trash2, ArchiveRestore } from 'lucide-react';
+import { X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine, Trash2, ArchiveRestore, MoreVertical, Link2 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
+import { boxPath, copyAppLink } from '@/lib/appUrl';
 import { canManageBoxes } from '@/lib/labPermissions';
 import { archiveBox, unarchiveBox, softDeleteBoxWithSamples, getBoxSampleCounts } from '@/lib/boxLifecycle';
 import { BoxDeleteConfirmDialog } from '@/components/box/BoxDeleteConfirmDialog';
@@ -211,7 +220,7 @@ interface ImportPreview {
 type ViewMode = 'grid' | 'spreadsheet';
 
 export function BoxDetailPage() {
-  const { freezerId, boxId } = useParams<{ freezerId: string; boxId: string }>();
+  const { freezerId: freezerIdFromUrl, boxId } = useParams<{ freezerId?: string; boxId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -261,6 +270,7 @@ export function BoxDetailPage() {
   const [deleteSampleCount, setDeleteSampleCount] = useState(0);
   const [deleteInUseCount, setDeleteInUseCount] = useState(0);
   const [boxActionError, setBoxActionError] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
   const [activeDragSample, setActiveDragSample] = useState<Sample | null>(null);
   const [gridInteractionLocked, setGridInteractionLocked] = useState(false);
@@ -325,6 +335,17 @@ export function BoxDetailPage() {
     },
     enabled: !!boxId && !!user,
   });
+
+  const freezerId = freezerIdFromUrl ?? box?.freezer_id;
+
+  const handleCopyBoxLink = async () => {
+    if (!boxId) return;
+    const ok = await copyAppLink(boxPath(boxId));
+    if (ok) {
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2000);
+    }
+  };
 
   const { data: samples = [] } = useQuery({
     queryKey: ['box-samples', boxId],
@@ -1150,8 +1171,8 @@ export function BoxDetailPage() {
 
       <div className="min-h-full bg-gray-50">
         {/* Page header */}
-        <div className="bg-white border-b border-gray-200 px-8 py-5">
-          <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-4">
+        <div className={`bg-white border-b border-gray-200 ${PAGE_HEADER} py-4 lg:py-5`}>
+          <nav className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 mb-4 max-w-full">
             <Link to="/dashboard" className="hover:text-gray-700 flex items-center gap-1"><Home className="w-3 h-3" /> Inicio</Link>
             <ChevronRight className="w-3 h-3" />
             <Link to="/boxes" className="hover:text-gray-700">Cajas</Link>
@@ -1160,10 +1181,10 @@ export function BoxDetailPage() {
             <span className="text-gray-800 font-medium truncate max-w-48">{box.name}</span>
           </nav>
 
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-gray-900">{box.name}</h1>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words">{box.name}</h1>
                 <button onClick={openEditBox} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"><Pencil className="w-4 h-4" /></button>
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${boxInUse ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>{STATUS_LABEL[box.status] || box.status}</span>
               </div>
@@ -1185,7 +1206,74 @@ export function BoxDetailPage() {
               )}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex lg:hidden w-full gap-2">
+              <Button
+                onClick={openAllocate}
+                disabled={boxInUse}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-sm disabled:opacity-50"
+              >
+                <UserPlus className="w-4 h-4" /> Asignar
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="border-gray-300 text-gray-700 px-3">
+                    <MoreVertical className="w-4 h-4" />
+                    <span className="sr-only">Acciones</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {boxInUse ? (
+                    <DropdownMenuItem
+                      disabled={isReturningBox}
+                      onClick={() => { if (confirm('¿Devolver la caja al congelador?')) returnBox(box.id); }}
+                    >
+                      <ArrowDownToLine className="w-4 h-4 mr-2" /> Devolver caja
+                    </DropdownMenuItem>
+                  ) : samples.length > 0 ? (
+                    <DropdownMenuItem
+                      disabled={isCheckingOutBox}
+                      onClick={() => { if (confirm('¿Sacar la caja del congelador?')) checkoutBox(box.id); }}
+                    >
+                      <ArrowUpFromLine className="w-4 h-4 mr-2" /> Sacar caja
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem onClick={handleCopyBoxLink}>
+                    <Link2 className="w-4 h-4 mr-2" /> {linkCopied ? 'Enlace copiado' : 'Copiar enlace'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowQrDialog(true)}>
+                    <QrCode className="w-4 h-4 mr-2" /> Ver QR
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportXLSX} disabled={samples.length === 0}>
+                    <Download className="w-4 h-4 mr-2" /> Exportar Excel
+                  </DropdownMenuItem>
+                  {canManage && !box.deleted_at && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {box.archived ? (
+                        <DropdownMenuItem
+                          disabled={unarchiveBoxMutation.isPending}
+                          onClick={() => { if (confirm('¿Desarchivar esta caja?')) unarchiveBoxMutation.mutate(); }}
+                        >
+                          <ArchiveRestore className="w-4 h-4 mr-2" /> Desarchivar
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          disabled={archiveBoxMutation.isPending}
+                          onClick={() => { if (confirm('¿Archivar esta caja?')) archiveBoxMutation.mutate(); }}
+                        >
+                          <Archive className="w-4 h-4 mr-2" /> Archivar
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={openDeleteBoxDialog} className="text-red-600 focus:text-red-600">
+                        <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <div className="hidden lg:flex items-center gap-2 flex-wrap">
               {boxInUse ? (
                 <Button
                   onClick={() => { if (confirm('¿Devolver la caja al congelador?')) returnBox(box.id); }}
@@ -1204,6 +1292,9 @@ export function BoxDetailPage() {
                   <ArrowUpFromLine className="w-4 h-4" /> Sacar caja
                 </Button>
               )}
+              <Button variant="outline" onClick={handleCopyBoxLink} className="border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">
+                <Link2 className="w-4 h-4" /> {linkCopied ? 'Copiado' : 'Copiar enlace'}
+              </Button>
               <Button variant="outline" onClick={() => setShowQrDialog(true)} className="border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"><QrCode className="w-4 h-4" /> Ver QR</Button>
               <Button onClick={openAllocate} disabled={boxInUse} className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-sm disabled:opacity-50">
                 <UserPlus className="w-4 h-4" /> Asignar muestra
@@ -1246,13 +1337,13 @@ export function BoxDetailPage() {
         </div>
 
         {boxInUse && (
-          <div className="mx-8 mt-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900 flex items-center gap-2">
+          <div className="mx-4 lg:mx-8 mt-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900 flex items-center gap-2">
             <ArrowUpFromLine className="w-4 h-4 flex-shrink-0" />
             <span><strong>Caja en uso</strong> — fuera del congelador. Las muestras conservan su posición. Usa «Devolver caja» al reintroducirla.</span>
           </div>
         )}
 
-        <div className="px-8 py-6 space-y-6">
+        <div className={`${PAGE_BODY} space-y-6`}>
           {/* View toggle + inline edit box button */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">

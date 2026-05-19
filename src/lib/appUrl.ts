@@ -8,6 +8,23 @@ export function appPath(path: string) {
   return `${getAppOrigin()}${base}${normalized}`;
 }
 
+export function boxPath(boxId: string) {
+  return `/box/${boxId}`;
+}
+
+export function sampleSearchPath(sampleCode: string) {
+  return `/search?${new URLSearchParams({ code: sampleCode }).toString()}`;
+}
+
+export async function copyAppLink(path: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(appPath(path));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** True when the URL hash contains an auth callback (invite, recovery, etc.). */
 export function hasAuthCallbackHash() {
   const hash = window.location.hash.replace(/^#/, '');

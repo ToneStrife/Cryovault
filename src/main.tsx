@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
 import { AuthProvider } from './context/AuthContext';
+import { restoreSpaRedirect } from './lib/spaRedirect';
+
+restoreSpaRedirect();
 
 const queryClient = new QueryClient();
 
@@ -14,7 +17,7 @@ if (rootElement) {
   createRoot(rootElement).render(
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
-         <BrowserRouter basename="/Cryovault/">
+         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <AuthProvider>
             <App />
           </AuthProvider>

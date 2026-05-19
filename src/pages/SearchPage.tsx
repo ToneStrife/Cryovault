@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -7,12 +7,14 @@ import { AppLayout } from '@/components/AppLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, Filter, X, ArrowRight, ChevronDown, Thermometer, Trash2, RotateCcw, Pencil, MapPin, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
+import { Search, Filter, X, ArrowRight, ChevronDown, Thermometer, Trash2, RotateCcw, Pencil, MapPin, ArrowUpFromLine, ArrowDownToLine, Link2 } from 'lucide-react';
 import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
 import { useSampleCheckout } from '@/hooks/useSampleCheckout';
 import { PlaceSampleDialog } from '@/components/PlaceSampleDialog';
 import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
 import type { Sample, SampleType, SampleStatus, UnitType, Freezer } from '@/types';
+import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
+import { boxPath, copyAppLink, sampleSearchPath } from '@/lib/appUrl';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
@@ -32,6 +34,7 @@ const TEMP_OPTIONS = [
 
 export function SearchPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
   const { checkoutSample, checkoutSamplesAsync, isCheckingOutSamples } = useSampleCheckout();
@@ -44,6 +47,12 @@ export function SearchPage() {
   const [showReturnDialog, setShowReturnDialog] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [q, setQ] = useState('');
+  const [copiedSampleId, setCopiedSampleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const code = searchParams.get('code');
+    if (code) setQ(code);
+  }, [searchParams]);
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
@@ -216,6 +225,14 @@ export function SearchPage() {
   const closeEdit = () => { setShowEditDialog(false); setEditTarget(null); setFormError(''); };
   const f = (field: keyof typeof editForm, val: string) => setEditForm((prev) => ({ ...prev, [field]: val }));
   const bf = (field: keyof typeof bulkForm, val: string) => setBulkForm((prev) => ({ ...prev, [field]: val }));
+
+  const handleCopySampleLink = async (sample: Sample) => {
+    const ok = await copyAppLink(sampleSearchPath(sample.sample_code));
+    if (ok) {
+      setCopiedSampleId(sample.id);
+      window.setTimeout(() => setCopiedSampleId(null), 2000);
+    }
+  };
   const toggleBulkField = (field: string) => setBulkApply((prev) => ({ ...prev, [field]: !prev[field] }));
   const selectedIds = Array.from(selected);
   const toggleSelect = (id: string) => setSelected((prev) => {
@@ -326,12 +343,12 @@ export function SearchPage() {
   return (
     <AppLayout>
       <div className="min-h-full bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-4 lg:px-8 py-6">
+        <div className={`bg-white border-b border-gray-200 ${PAGE_HEADER} py-6`}>
           <h1 className="text-2xl font-bold text-gray-900">Búsqueda avanzada</h1>
           <p className="text-sm text-gray-500 mt-0.5">Busca muestras por cualquier criterio</p>
         </div>
 
-        <div className="px-4 lg:px-8 py-6">
+        <div className={PAGE_BODY}>
           {/* Main Search */}
           <div className="relative mb-4">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -457,7 +474,7 @@ export function SearchPage() {
                 </div>
 
                 {/* Row 3: dates, thaws, ubicación, deleted */}
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 items-end">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Fecha congelación desde</label>
                     <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-white border-gray-200 text-gray-700 text-sm py-2 h-[38px]" />
@@ -630,6 +647,14 @@ export function SearchPage() {
                         </td>
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-0.5 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleCopySampleLink(s)}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded inline-flex"
+                              title={copiedSampleId === s.id ? 'Enlace copiado' : 'Copiar enlace a esta muestra'}
+                            >
+                              <Link2 className="w-4 h-4" />
+                            </button>
                             {!isDeleted && !s.box_id && (
                               <button
                                 type="button"
@@ -662,7 +687,7 @@ export function SearchPage() {
                             )}
                             {boxEntry && !isDeleted && (
                               <Link
-                                to={`/freezers/${boxEntry.freezer_id}/box/${s.box_id}`}
+                                to={boxPath(s.box_id!)}
                                 className="p-1.5 text-gray-400 hover:text-blue-600 rounded inline-flex"
                                 title="Ir a la caja"
                               >

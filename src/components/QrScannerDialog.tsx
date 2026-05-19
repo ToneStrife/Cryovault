@@ -50,7 +50,7 @@ export function QrScannerDialog({ open, onClose }: Props) {
               setResultMsg(box.name);
               setTimeout(() => {
                 onClose();
-                navigate(`/freezers/${box.freezer_id}/box/${box.id}`);
+                navigate(`/box/${box.id}`);
               }, 1200);
             } else {
               setState('not_found');

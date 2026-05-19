@@ -19,6 +19,7 @@ import {
   cleanOptions,
   labelOption,
 } from '@/lib/settingsOptions';
+import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
 import type { Settings } from '@/types';
 
 type OptionListKey = 'sample_types' | 'sample_statuses' | 'box_types' | 'box_statuses' | 'unit_types';
@@ -203,12 +204,12 @@ export function SettingsPage() {
   return (
     <AppLayout>
       <div className="min-h-full bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-8 py-6">
+        <div className={`bg-white border-b border-gray-200 ${PAGE_HEADER} py-6`}>
           <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
           <p className="text-sm text-gray-500 mt-0.5">Ajustes del laboratorio y valores por defecto</p>
         </div>
 
-        <div className="px-8 py-6 max-w-5xl">
+        <div className={`${PAGE_BODY} max-w-5xl`}>
           <div className="space-y-6">
             {/* Lab info */}
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
@@ -261,7 +262,7 @@ export function SettingsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label className="text-sm text-gray-700 block mb-1.5">Filas de caja</label>
                     <Input

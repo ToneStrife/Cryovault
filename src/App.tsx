@@ -28,6 +28,7 @@ function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/freezers" element={<FreezersPage />} />
               <Route path="/freezers/:id" element={<FreezerDetailPage />} />
+              <Route path="/box/:boxId" element={<BoxDetailPage />} />
               <Route path="/freezers/:freezerId/box/:boxId" element={<BoxDetailPage />} />
               <Route path="/boxes" element={<BoxesPage />} />
               <Route path="/samples" element={<Navigate to="/search" replace />} />

@@ -162,29 +162,33 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* ── MAIN CONTENT ── */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top header */}
-        <header className="bg-white border-b border-gray-200 px-4 lg:px-8 py-3.5 flex items-center justify-between flex-shrink-0 h-16">
-          {/* Mobile hamburger */}
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
-          <div className="flex items-center gap-3">
-            {/* Desktop: breadcrumb title */}
+        <header className="bg-white border-b border-gray-200 px-4 lg:px-8 py-3.5 flex items-center justify-between gap-2 flex-shrink-0 min-h-16">
+          <div className="flex items-center gap-2 min-w-0 flex-1 lg:flex-none">
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 flex-shrink-0"
+              aria-label="Abrir menú"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <h1 className="text-base font-semibold text-gray-800 hidden lg:block">{activeLabel}</h1>
-            {/* Mobile: logo */}
-            <div className="flex items-center gap-2 lg:hidden">
-              <CryoVaultLogo size={28} />
-              <span className="font-bold text-gray-900 text-sm">CryoVault</span>
+            <div className="min-w-0 lg:hidden">
+              <p className="text-sm font-semibold text-gray-900 truncate">{activeLabel}</p>
+              <p className="text-[10px] text-gray-400 truncate">CryoVault</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <Link
               to="/profile"
-              className="hidden sm:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
+              className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors lg:hidden"
+              aria-label="Mi perfil"
+            >
+              <UserCircle className="w-5 h-5" />
+            </Link>
+            <Link
+              to="/profile"
+              className="hidden lg:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
             >
               <UserCircle className="w-5 h-5" />
               <span className="max-w-[140px] truncate">{user?.full_name || user?.email}</span>
@@ -196,13 +200,13 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-auto bg-gray-50 pb-16 lg:pb-0">
+        <main className="flex-1 overflow-auto bg-gray-50 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
           {children}
         </main>
       </div>
 
       {/* ── MOBILE BOTTOM TAB BAR ── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 flex items-center justify-around px-1 safe-area-inset-bottom">
+      <nav className={`lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 flex items-center justify-around px-1 safe-area-pb ${mobileMenuOpen ? 'hidden' : ''}`}>
         {menuItems.slice(0, 5).map(({ label, href, icon: Icon }) => {
           const isActive = activeHref === href;
           return (
@@ -230,7 +234,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* ── MOBILE SLIDE-IN DRAWER ── */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-[60] lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
           <div className="absolute left-0 top-0 bottom-0 w-72 bg-white flex flex-col shadow-xl">
             <div className="px-4 py-5 border-b border-gray-100 flex items-center justify-between">

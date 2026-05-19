@@ -71,10 +71,9 @@ function combineRefs<T>(...refs: Array<(node: T | null) => void>) {
 
 // ── Compact draggable box card ──────────────────────────────────────────────────
 function DraggableBoxCard({
-  box, freezerId, onEdit, onUnassign,
+  box, onEdit, onUnassign,
 }: {
   box: BoxType;
-  freezerId: string;
   onEdit: (b: BoxType) => void;
   onUnassign: (id: string) => void;
 }) {
@@ -105,7 +104,7 @@ function DraggableBoxCard({
       </button>
       <button
         type="button"
-        onClick={() => navigate(`/freezers/${freezerId}/box/${box.id}`)}
+        onClick={() => navigate(`/box/${box.id}`)}
         className="flex-1 min-w-0 text-left"
       >
         <p className="text-xs font-medium text-gray-900 truncate leading-tight flex items-center gap-1">
@@ -864,7 +863,7 @@ export function FreezerDetailPage() {
   const renderBoxGrid = (boxList: BoxType[]) => (
     <div className={BOX_GRID}>
       {boxList.map((box) => (
-        <DraggableBoxCard key={box.id} box={box} freezerId={id!} onEdit={openEdit} onUnassign={handleUnassign} />
+        <DraggableBoxCard key={box.id} box={box} onEdit={openEdit} onUnassign={handleUnassign} />
       ))}
     </div>
   );

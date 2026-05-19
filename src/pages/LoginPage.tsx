@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { hasAuthCallbackHash } from '@/lib/appUrl';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signIn, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: { pathname: string; search?: string; hash?: string } })?.from;
 
   useEffect(() => {
     if (hasAuthCallbackHash()) {
@@ -20,9 +22,12 @@ export function LoginPage() {
       return;
     }
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      const target = from
+        ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`
+        : '/dashboard';
+      navigate(target, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, from]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

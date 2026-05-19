@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { joinFullName, splitFullName } from '@/lib/profileName';
 import { AlertCircle, CircleCheck as CheckCircle, User } from 'lucide-react';
+import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Administrador general',
@@ -100,12 +101,12 @@ export function ProfilePage() {
   return (
     <AppLayout>
       <div className="min-h-full bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-8 py-6">
+        <div className={`bg-white border-b border-gray-200 ${PAGE_HEADER} py-6`}>
           <h1 className="text-2xl font-bold text-gray-900">Mi perfil</h1>
           <p className="text-sm text-gray-500 mt-0.5">Datos personales y seguridad de la cuenta</p>
         </div>
 
-        <div className="px-8 py-6 max-w-2xl space-y-6">
+        <div className={`${PAGE_BODY} max-w-2xl space-y-6`}>
           <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">

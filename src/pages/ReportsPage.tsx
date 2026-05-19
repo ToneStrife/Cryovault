@@ -10,6 +10,7 @@ import type { Sample, Freezer, Box } from '@/types';
 import { formatAuditLog, makeUserMap } from '@/lib/auditFormat';
 import { canManageBoxes } from '@/lib/labPermissions';
 import { restoreBoxWithSamples, unarchiveBox, parseDeletedSampleIds } from '@/lib/boxLifecycle';
+import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
 
 const TABS = ['Inventario', 'Por tipo', 'Por estado', 'Auditoría', 'Papelera'];
 
@@ -186,12 +187,12 @@ export function ReportsPage() {
   return (
     <AppLayout>
       <div className="min-h-full bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-8 py-6">
+        <div className={`bg-white border-b border-gray-200 ${PAGE_HEADER} py-6`}>
           <h1 className="text-2xl font-bold text-gray-900">Informes</h1>
           <p className="text-sm text-gray-500 mt-0.5">Estadísticas e informes del inventario</p>
         </div>
 
-        <div className="px-8 py-6">
+        <div className={PAGE_BODY}>
           {/* Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {[
@@ -230,16 +231,18 @@ export function ReportsPage() {
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
               <h3 className="text-gray-900 font-semibold mb-4">Estado de muestras</h3>
               {byStatus.length > 0 ? (
-                <div className="flex items-center gap-6">
-                  <ResponsiveContainer width="55%" height={220}>
+                <div className="flex flex-col lg:flex-row items-center gap-6">
+                  <div className="w-full max-w-xs lg:w-[55%] mx-auto lg:mx-0">
+                    <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
                       <Pie data={byStatus} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} dataKey="value">
                         {byStatus.map((e) => <Cell key={e.name} fill={STATUS_COLORS[e.name] || '#6b7280'} />)}
                       </Pie>
                       <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, color: '#111827' }} />
                     </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-2 flex-1">
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 flex-1 w-full">
                     {byStatus.map((e) => (
                       <div key={e.name} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
@@ -259,12 +262,12 @@ export function ReportsPage() {
 
           {/* Tabs */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="flex border-b border-gray-200 bg-gray-50">
+            <div className="flex overflow-x-auto flex-nowrap border-b border-gray-200 bg-gray-50">
               {TABS.map((tab, i) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(i)}
-                  className={`px-5 py-3 text-sm font-medium transition-colors ${
+                  className={`shrink-0 px-3 sm:px-5 py-3 text-sm font-medium transition-colors ${
                     activeTab === i
                       ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
                       : 'text-gray-500 hover:text-gray-700'

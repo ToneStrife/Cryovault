@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { BOX_STATUS_LABEL, BOX_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
 import { canManageBoxes } from '@/lib/labPermissions';
+import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
+import { boxPath } from '@/lib/appUrl';
 import { archiveBox, unarchiveBox, softDeleteBoxWithSamples, getBoxSampleCounts } from '@/lib/boxLifecycle';
 import { BoxDeleteConfirmDialog } from '@/components/box/BoxDeleteConfirmDialog';
 import type { Box, Freezer, Rack } from '@/types';
@@ -343,7 +345,7 @@ export function BoxesPage() {
     <AppLayout>
       <div className="min-h-full bg-gray-50">
         {/* Page header */}
-        <div className="bg-white border-b border-gray-200 px-8 py-6">
+        <div className={`bg-white border-b border-gray-200 ${PAGE_HEADER} py-6`}>
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Cajas de almacenamiento</h1>
@@ -392,7 +394,7 @@ export function BoxesPage() {
           )}
         </div>
 
-        <div className="px-8 py-6">
+        <div className={PAGE_BODY}>
           {/* Filters row */}
           <div className="flex items-center gap-3 mb-6 flex-wrap">
             <div className="relative flex-1 min-w-48">
@@ -503,7 +505,7 @@ export function BoxesPage() {
                   <div
                     key={box.id}
                     className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-gray-300 transition-all group cursor-pointer"
-                    onClick={() => navigate(`/freezers/${box.freezerId}/box/${box.id}`)}
+                    onClick={() => navigate(boxPath(box.id))}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-start gap-3">
@@ -611,7 +613,7 @@ export function BoxesPage() {
                             <div className="flex items-center gap-2 group/name">
                               <span
                                 className="font-medium text-sm text-gray-900 cursor-pointer hover:underline"
-                                onClick={() => navigate(`/freezers/${box.freezerId}/box/${box.id}`)}
+                                onClick={() => navigate(boxPath(box.id))}
                               >
                                 {box.name}
                               </span>
@@ -677,7 +679,7 @@ export function BoxesPage() {
                         )}
                         <td className="px-4 py-3">
                           <Link
-                            to={`/freezers/${box.freezerId}/box/${box.id}`}
+                            to={boxPath(box.id)}
                             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors flex items-center justify-center"
                           >
                             <ChevronRight className="w-4 h-4" />
