@@ -102,7 +102,12 @@ function DraggableBoxCard({
         onClick={() => navigate(`/freezers/${freezerId}/box/${box.id}`)}
         className="flex-1 min-w-0 text-left"
       >
-        <p className="text-xs font-medium text-gray-900 truncate leading-tight">{box.name}</p>
+        <p className="text-xs font-medium text-gray-900 truncate leading-tight flex items-center gap-1">
+          {box.name}
+          {box.status === 'in_use' && (
+            <span className="text-[9px] px-1 py-0 rounded bg-amber-100 text-amber-800 font-semibold shrink-0">En uso</span>
+          )}
+        </p>
         <p className="text-[10px] text-gray-400 leading-tight">
           {box.rows}×{box.columns} · <span className={`font-medium ${getOccupancyColor(pct)}`}>{pct}%</span>
         </p>

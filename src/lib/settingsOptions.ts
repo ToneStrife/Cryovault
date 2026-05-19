@@ -3,13 +3,14 @@ import { supabase } from '@/lib/supabase';
 import type { Settings } from '@/types';
 
 export const DEFAULT_SAMPLE_TYPES = ['tissue', 'blood', 'serum', 'plasma', 'urine', 'csf', 'saliva', 'dna', 'rna', 'protein', 'other'];
-export const DEFAULT_SAMPLE_STATUSES = ['active', 'used', 'discarded', 'archived', 'contaminated'];
+export const DEFAULT_SAMPLE_STATUSES = ['active', 'in_use', 'used', 'discarded', 'archived', 'contaminated'];
 export const DEFAULT_BOX_TYPES = ['standard', 'microtube', 'sample_vial', 'other'];
-export const DEFAULT_BOX_STATUSES = ['active', 'full', 'archived', 'retired'];
+export const DEFAULT_BOX_STATUSES = ['active', 'full', 'in_use', 'archived', 'retired'];
 export const DEFAULT_UNIT_TYPES = ['mL', 'µL', 'mg', 'µg', 'ng', 'mol/L', '%', 'other'];
 
 export const SAMPLE_STATUS_LABEL: Record<string, string> = {
   active: 'Activo',
+  in_use: 'En uso',
   used: 'Usado',
   discarded: 'Descartado',
   archived: 'Archivado',
@@ -33,6 +34,7 @@ export const SAMPLE_TYPE_LABEL: Record<string, string> = {
 export const BOX_STATUS_LABEL: Record<string, string> = {
   active: 'Activa',
   full: 'Llena',
+  in_use: 'En uso',
   archived: 'Archivada',
   retired: 'Retirada',
 };

@@ -7,12 +7,16 @@ import { AppLayout } from '@/components/AppLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, Filter, X, ArrowRight, ChevronDown, Thermometer, Trash2, RotateCcw, Pencil } from 'lucide-react';
+import { Search, Filter, X, ArrowRight, ChevronDown, Thermometer, Trash2, RotateCcw, Pencil, MapPin, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
 import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
+import { useSampleCheckout } from '@/hooks/useSampleCheckout';
+import { PlaceSampleDialog } from '@/components/PlaceSampleDialog';
+import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
 import type { Sample, SampleType, SampleStatus, UnitType, Freezer } from '@/types';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
+  in_use: 'bg-amber-100 text-amber-800',
   used: 'bg-yellow-100 text-yellow-700',
   discarded: 'bg-red-100 text-red-700',
   archived: 'bg-gray-100 text-gray-500',
@@ -30,9 +34,15 @@ export function SearchPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
+  const { checkoutSample, checkoutSamplesAsync, isCheckingOutSamples } = useSampleCheckout();
   const sampleTypes = settingsOptions.sampleTypes;
   const statuses = settingsOptions.sampleStatuses;
   const units = settingsOptions.unitTypes;
+  const [placeTarget, setPlaceTarget] = useState<Sample | null>(null);
+  const [showPlaceDialog, setShowPlaceDialog] = useState(false);
+  const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
+  const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -138,6 +148,8 @@ export function SearchPage() {
         (s.subject_code || '').toLowerCase().includes(lp)
       )) return false;
       if (statusFilter && s.status !== statusFilter) return false;
+      if (locationFilter === 'unplaced' && s.box_id) return false;
+      if (locationFilter === 'in_use' && s.status !== 'in_use') return false;
       if (typeFilter && s.sample_type !== typeFilter) return false;
       if (projectFilter && s.project !== projectFilter) return false;
       if (boxFilter && s.box_id !== boxFilter) return false;
@@ -158,9 +170,9 @@ export function SearchPage() {
       if (maxThaws && s.thaw_count > parseInt(maxThaws)) return false;
       return true;
     });
-  }, [samples, q, patientFilter, statusFilter, typeFilter, projectFilter, boxFilter, freezerFilter, tempFilter, dateFrom, dateTo, minThaws, maxThaws, showDeleted, boxMap, freezerMap]);
+  }, [samples, q, patientFilter, statusFilter, typeFilter, projectFilter, boxFilter, freezerFilter, tempFilter, dateFrom, dateTo, minThaws, maxThaws, showDeleted, locationFilter, boxMap, freezerMap]);
 
-  const activeFilterCount = [statusFilter, typeFilter, projectFilter, patientFilter, freezerFilter, boxFilter, tempFilter, dateFrom, dateTo, minThaws, maxThaws, showDeleted ? '1' : ''].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, typeFilter, projectFilter, patientFilter, freezerFilter, boxFilter, tempFilter, dateFrom, dateTo, minThaws, maxThaws, locationFilter, showDeleted ? '1' : ''].filter(Boolean).length;
 
   const clearFilters = () => {
     setQ('');
@@ -175,6 +187,7 @@ export function SearchPage() {
     setDateTo('');
     setMinThaws('');
     setMaxThaws('');
+    setLocationFilter('');
     setShowDeleted(false);
   };
 
@@ -212,6 +225,25 @@ export function SearchPage() {
   });
   const selectAllFiltered = () => setSelected(new Set(filtered.map((s) => s.id)));
   const clearSelect = () => setSelected(new Set());
+
+  const handleBulkCheckout = async () => {
+    const targets = filtered.filter(
+      (s) => selected.has(s.id) && !(s as { deleted_at?: string | null }).deleted_at && s.status !== 'in_use',
+    );
+    if (targets.length === 0) {
+      alert('No hay muestras activas seleccionadas que se puedan sacar.');
+      return;
+    }
+    if (!confirm(`¿Sacar ${targets.length} muestra${targets.length !== 1 ? 's' : ''}? (+1 descongelación cada una, deja hueco en la caja)`)) {
+      return;
+    }
+    try {
+      await checkoutSamplesAsync(targets);
+      clearSelect();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Error al sacar muestras');
+    }
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -358,7 +390,7 @@ export function SearchPage() {
                     <div className="relative">
                       <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
                         <option value="">Todos los estados</option>
-                        {(['active', 'used', 'discarded', 'archived', 'contaminated'] as SampleStatus[]).map((s) => (
+                        {statuses.map((s) => (
                           <option key={s} value={s}>{labelOption(s, SAMPLE_STATUS_LABEL)}</option>
                         ))}
                       </select>
@@ -424,8 +456,8 @@ export function SearchPage() {
                   </div>
                 </div>
 
-                {/* Row 3: dates, thaws, deleted */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                {/* Row 3: dates, thaws, ubicación, deleted */}
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Fecha congelación desde</label>
                     <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-white border-gray-200 text-gray-700 text-sm py-2 h-[38px]" />
@@ -441,6 +473,14 @@ export function SearchPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Descongelaciones máx.</label>
                     <Input type="number" min={0} value={maxThaws} onChange={(e) => setMaxThaws(e.target.value)} placeholder="∞" className="bg-white border-gray-200 text-gray-700 text-sm py-2 h-[38px]" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-500">Ubicación</label>
+                    <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={selectClass}>
+                      <option value="">Todas</option>
+                      <option value="unplaced">Sin caja</option>
+                      <option value="in_use">En uso</option>
+                    </select>
                   </div>
                   <div className="flex items-center gap-2 pb-1">
                     <input
@@ -469,6 +509,17 @@ export function SearchPage() {
                 <Button onClick={() => { setFormError(''); setShowBulkDialog(true); }} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
                   <Pencil className="w-3.5 h-3.5" /> Editar grupo
                 </Button>
+                {!showDeleted && (
+                  <Button
+                    onClick={handleBulkCheckout}
+                    disabled={isCheckingOutSamples}
+                    size="sm"
+                    variant="outline"
+                    className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                  >
+                    <ArrowUpFromLine className="w-3.5 h-3.5" /> Sacar
+                  </Button>
+                )}
                 {!showDeleted ? (
                   <Button onClick={() => softDeleteMutation.mutate(selectedIds)} size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
                     <Trash2 className="w-3.5 h-3.5" /> Eliminar
@@ -516,7 +567,7 @@ export function SearchPage() {
                     <th className="text-left text-xs text-gray-500 font-semibold px-4 py-3">Posición</th>
                     <th className="text-left text-xs text-gray-500 font-semibold px-4 py-3 hidden xl:table-cell">Descong.</th>
                     <th className="text-left text-xs text-gray-500 font-semibold px-4 py-3">Estado</th>
-                    <th className="px-4 py-3 w-10"></th>
+                    <th className="px-4 py-3 w-28"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -553,10 +604,16 @@ export function SearchPage() {
                             </span>
                           ) : '—'}
                         </td>
-                        <td className="px-4 py-3 hidden lg:table-cell text-gray-500 text-sm">{boxEntry ? boxEntry.name : '—'}</td>
+                        <td className="px-4 py-3 hidden lg:table-cell text-gray-500 text-sm">
+                          {!s.box_id ? (
+                            <span className="text-xs text-orange-600 font-medium">Sin ubicar</span>
+                          ) : boxEntry ? boxEntry.name : '—'}
+                        </td>
                         <td className="px-4 py-3">
                           {s.position_label ? (
                             <span className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{s.position_label}</span>
+                          ) : s.status === 'in_use' && s.box_id ? (
+                            <span className="text-xs text-amber-600 italic">En uso</span>
                           ) : (
                             <span className="text-gray-300 text-sm">—</span>
                           )}
@@ -571,17 +628,48 @@ export function SearchPage() {
                             {labelOption(s.status, SAMPLE_STATUS_LABEL)}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
-                          {boxEntry && !isDeleted && (
-                            <Link
-                              to={`/freezers/${boxEntry.freezer_id}/box/${s.box_id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 rounded inline-flex"
-                              title="Ir a la caja"
-                            >
-                              <ArrowRight className="w-4 h-4" />
-                            </Link>
-                          )}
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-0.5 justify-end">
+                            {!isDeleted && !s.box_id && (
+                              <button
+                                type="button"
+                                onClick={() => { setPlaceTarget(s); setShowPlaceDialog(true); }}
+                                className="p-1.5 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded inline-flex"
+                                title="Colocar en caja"
+                              >
+                                <MapPin className="w-4 h-4" />
+                              </button>
+                            )}
+                            {!isDeleted && s.status === 'in_use' && s.box_id && (
+                              <button
+                                type="button"
+                                onClick={() => { setReturnTarget(s); setShowReturnDialog(true); }}
+                                className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded inline-flex"
+                                title="Devolver a la caja"
+                              >
+                                <ArrowDownToLine className="w-4 h-4" />
+                              </button>
+                            )}
+                            {!isDeleted && s.status !== 'in_use' && s.box_id && (
+                              <button
+                                type="button"
+                                onClick={() => { if (confirm('¿Sacar muestra? (+1 descongelación)')) checkoutSample(s); }}
+                                className="p-1.5 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded inline-flex"
+                                title="Sacar muestra"
+                              >
+                                <ArrowUpFromLine className="w-4 h-4" />
+                              </button>
+                            )}
+                            {boxEntry && !isDeleted && (
+                              <Link
+                                to={`/freezers/${boxEntry.freezer_id}/box/${s.box_id}`}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 rounded inline-flex"
+                                title="Ir a la caja"
+                              >
+                                <ArrowRight className="w-4 h-4" />
+                              </Link>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -674,6 +762,17 @@ export function SearchPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <PlaceSampleDialog
+        sample={placeTarget}
+        open={showPlaceDialog}
+        onClose={() => { setShowPlaceDialog(false); setPlaceTarget(null); }}
+      />
+      <ReturnSampleDialog
+        sample={returnTarget}
+        open={showReturnDialog}
+        onClose={() => { setShowReturnDialog(false); setReturnTarget(null); }}
+      />
     </AppLayout>
   );
 }

@@ -15,8 +15,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload } from 'lucide-react';
+import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
 import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
+import { useSampleCheckout } from '@/hooks/useSampleCheckout';
+import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
+import { positionLabel } from '@/lib/positionUtils';
 
 import type { Box, Sample, SampleType, SampleStatus, UnitType, Rack } from '@/types';
 
@@ -83,6 +86,7 @@ const STATUS_LABEL = SAMPLE_STATUS_LABEL;
 
 const STATUS_BADGE: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
+  in_use: 'bg-amber-100 text-amber-800',
   used: 'bg-yellow-100 text-yellow-700',
   discarded: 'bg-red-100 text-red-700',
   archived: 'bg-gray-100 text-gray-600',
@@ -127,10 +131,6 @@ interface SpreadsheetRow {
   volume: string;
   units: string;
   notes: string;
-}
-
-function positionLabel(row: number, col: number): string {
-  return `${String.fromCharCode(64 + row)}${col}`;
 }
 
 function triggerBlobDownload(blob: Blob, filename: string) {
@@ -209,6 +209,15 @@ export function BoxDetailPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
+  const {
+    checkoutSample,
+    checkoutSamplesAsync,
+    isCheckingOutSamples,
+    checkoutBox,
+    returnBox,
+    isCheckingOutBox,
+    isReturningBox,
+  } = useSampleCheckout();
   const sampleTypes = settingsOptions.sampleTypes;
   const statuses = settingsOptions.sampleStatuses;
   const units = settingsOptions.unitTypes;
@@ -238,6 +247,8 @@ export function BoxDetailPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
   const [bulkApply, setBulkApply] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState<SampleFormData>(emptyForm);
   const [formError, setFormError] = useState('');
@@ -298,6 +309,8 @@ export function BoxDetailPage() {
     },
     enabled: !!boxId && !!user,
   });
+
+  const boxInUse = box?.status === 'in_use';
 
   const { data: freezer } = useQuery({
     queryKey: ['freezer', freezerId],
@@ -488,24 +501,6 @@ export function BoxDetailPage() {
     onError: (e: any) => setFormError(e.message),
   });
 
-  const sacarMuestraMutation = useMutation({
-    mutationFn: async (s: Sample) => {
-      const newThaws = s.thaw_count + 1;
-      const { error } = await (supabase.from('samples') as any)
-        .update({ status: 'used', thaw_count: newThaws })
-        .eq('id', s.id);
-      if (error) throw error;
-      return { newThaws, maxThaws: s.max_thaws };
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
-      setShowDetailDialog(false);
-      if (result.newThaws >= result.maxThaws) {
-        setTimeout(() => alert(`Advertencia: la muestra ha alcanzado el máximo de descongelaciones (${result.maxThaws}).`), 100);
-      }
-    },
-  });
-
   const editBoxMutation = useMutation({
     mutationFn: async ({ name, description, shelf_number, rack_id, rows, columns }: { name: string; description: string; shelf_number: number | null; rack_id: string | null; rows: number; columns: number }) => {
       let imageUrl = box?.image_url ?? null;
@@ -682,7 +677,7 @@ export function BoxDetailPage() {
     const existing = sampleMap[`${row}_${col}`];
     if (existing) {
       openSampleDetail(existing);
-    } else {
+    } else if (!boxInUse) {
       setSelectedCell({ row, col });
       setForm(defaultSampleForm);
       setFormError('');
@@ -691,7 +686,7 @@ export function BoxDetailPage() {
   };
 
   const openAllocate = () => {
-    if (!box) return;
+    if (!box || boxInUse) return;
     for (let r = 1; r <= box.rows; r++) {
       for (let c = 1; c <= box.columns; c++) {
         if (!sampleMap[`${r}_${c}`]) {
@@ -954,9 +949,12 @@ export function BoxDetailPage() {
   const total = rows * cols;
   const pct = total > 0 ? Math.round((box.occupancy / total) * 100) : 0;
   const dirtyCount = sheetRows.filter((r) => r._dirty || (r._new && r.sample_code.trim())).length;
-  const sortedSamples = [...samples]
-    .filter((s) => s.position_label)
-    .sort((a, b) => (a.position_label || '').localeCompare(b.position_label || ''));
+  const sortedSamples = [...samples].sort((a, b) => {
+    if (!a.position_label && !b.position_label) return a.sample_code.localeCompare(b.sample_code);
+    if (!a.position_label) return 1;
+    if (!b.position_label) return -1;
+    return (a.position_label || '').localeCompare(b.position_label || '');
+  });
   const activeSampleTypeSet = new Set(sampleTypes);
   const legendSampleTypes = Array.from(
     new Set(sortedSamples.map((s) => s.sample_type).filter((type) => activeSampleTypeSet.has(type)))
@@ -966,6 +964,25 @@ export function BoxDetailPage() {
   const selectedBoxIds = selectedIds.filter((id) => sortedSampleIdSet.has(id));
   const allBoxSamplesSelected = sortedSamples.length > 0 && selectedBoxIds.length === sortedSamples.length;
   const selectAllBoxSamples = () => setSelected(new Set(sortedSampleIds));
+
+  const handleBulkCheckout = async () => {
+    const targets = samples.filter(
+      (s) => selectedBoxIds.includes(s.id) && s.status !== 'in_use',
+    );
+    if (targets.length === 0) {
+      alert('No hay muestras activas seleccionadas que se puedan sacar.');
+      return;
+    }
+    if (!confirm(`¿Sacar ${targets.length} muestra${targets.length !== 1 ? 's' : ''}? (+1 descongelación cada una)`)) {
+      return;
+    }
+    try {
+      await checkoutSamplesAsync(targets);
+      clearSelect();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Error al sacar muestras');
+    }
+  };
 
   return (
     <AppLayout>
@@ -1017,15 +1034,33 @@ export function BoxDetailPage() {
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-gray-900">{box.name}</h1>
                 <button onClick={openEditBox} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"><Pencil className="w-4 h-4" /></button>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-green-100 text-green-700 font-medium">{STATUS_LABEL[box.status] || box.status}</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${boxInUse ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>{STATUS_LABEL[box.status] || box.status}</span>
               </div>
               <p className="text-sm text-gray-500 mt-1">Cuadrícula {rows}×{cols} &middot; <span className="font-semibold text-gray-700">{box.occupancy}</span>/{total} muestras ({pct}%)</p>
               {box.description && <p className="text-xs text-gray-400 mt-0.5">{box.description}</p>}
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {boxInUse ? (
+                <Button
+                  onClick={() => { if (confirm('¿Devolver la caja al congelador?')) returnBox(box.id); }}
+                  disabled={isReturningBox}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-sm"
+                >
+                  <ArrowDownToLine className="w-4 h-4" /> Devolver caja
+                </Button>
+              ) : samples.length > 0 && (
+                <Button
+                  onClick={() => { if (confirm('¿Sacar la caja del congelador? Todas las muestras pasarán a «en uso» (+1 descongelación).')) checkoutBox(box.id); }}
+                  disabled={isCheckingOutBox}
+                  variant="outline"
+                  className="border-amber-300 text-amber-700 hover:bg-amber-50 text-sm"
+                >
+                  <ArrowUpFromLine className="w-4 h-4" /> Sacar caja
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setShowQrDialog(true)} className="border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"><QrCode className="w-4 h-4" /> Ver QR</Button>
-              <Button onClick={openAllocate} className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-sm">
+              <Button onClick={openAllocate} disabled={boxInUse} className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-sm disabled:opacity-50">
                 <UserPlus className="w-4 h-4" /> Asignar muestra
               </Button>
               <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
@@ -1035,6 +1070,13 @@ export function BoxDetailPage() {
             </div>
           </div>
         </div>
+
+        {boxInUse && (
+          <div className="mx-8 mt-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900 flex items-center gap-2">
+            <ArrowUpFromLine className="w-4 h-4 flex-shrink-0" />
+            <span><strong>Caja en uso</strong> — fuera del congelador. Las muestras conservan su posición. Usa «Devolver caja» al reintroducirla.</span>
+          </div>
+        )}
 
         <div className="px-8 py-6 space-y-6">
           {/* View toggle + inline edit box button */}
@@ -1055,7 +1097,7 @@ export function BoxDetailPage() {
           {/* ── GRID VIEW ── */}
           {viewMode === 'grid' && (
             <>
-              <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className={`bg-white border border-gray-200 rounded-xl p-6 shadow-sm ${boxInUse ? 'opacity-75' : ''}`}>
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4 text-gray-400" />
@@ -1090,7 +1132,7 @@ export function BoxDetailPage() {
                               key={c}
                               onClick={() => handleCellClick(r + 1, c + 1)}
                               title={sample ? `${sample.sample_code} | ${sample.sample_type} | ${sample.status}` : `${label} — vacío`}
-                              className={`w-16 h-16 rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${sample ? typeCellClass(sample.sample_type, sampleTypes) : CELL_BG.empty}`}
+                              className={`w-16 h-16 rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${sample ? (sample.status === 'in_use' ? 'bg-amber-400 hover:bg-amber-500 border-amber-500 text-amber-950 cursor-pointer' : typeCellClass(sample.sample_type, sampleTypes)) : CELL_BG.empty}`}
                             >
                               {sample ? (
                                 <span className="text-[11px] font-bold leading-tight px-1 text-center break-all">{sample.sample_code}</span>
@@ -1115,6 +1157,9 @@ export function BoxDetailPage() {
                   <span className="flex items-center gap-1.5 text-xs text-gray-500">
                     <span className="w-3 h-3 rounded bg-white border border-gray-300" /> Vacío
                   </span>
+                  <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <span className="w-3 h-3 rounded bg-amber-400" /> En uso (fuera de celda)
+                  </span>
                 </div>
               </div>
 
@@ -1133,6 +1178,17 @@ export function BoxDetailPage() {
                       <Button onClick={() => { setFormError(''); setShowBulkDialog(true); }} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
                         <Pencil className="w-3.5 h-3.5" /> Editar grupo
                       </Button>
+                      {!boxInUse && (
+                        <Button
+                          onClick={handleBulkCheckout}
+                          disabled={isCheckingOutSamples}
+                          size="sm"
+                          variant="outline"
+                          className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                        >
+                          <ArrowUpFromLine className="w-3.5 h-3.5" /> Sacar
+                        </Button>
+                      )}
                       <Button
                         onClick={() => {
                           if (confirm(`¿Quitar ${selectedBoxIds.length} muestra${selectedBoxIds.length !== 1 ? 's' : ''} de esta caja?`)) {
@@ -1188,7 +1244,13 @@ export function BoxDetailPage() {
                               />
                             </td>
                             <td className="px-4 py-2.5">
-                              <span className="font-mono text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{s.position_label}</span>
+                              {s.position_label ? (
+                                <span className="font-mono text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{s.position_label}</span>
+                              ) : s.status === 'in_use' ? (
+                                <span className="text-xs text-amber-600 italic">— (en uso)</span>
+                              ) : (
+                                <span className="text-gray-300 text-xs">—</span>
+                              )}
                             </td>
                             <td className="px-4 py-2.5 font-mono text-sm text-gray-900 font-medium">{s.sample_code}</td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{s.patient_code || <span className="text-gray-300">—</span>}</td>
@@ -1486,8 +1548,33 @@ export function BoxDetailPage() {
                   })} className="px-6 bg-blue-600 hover:bg-blue-700">Guardar</Button>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => { if (confirm('¿Sacar muestra?')) sacarMuestraMutation.mutate(selectedSample); }} className="text-blue-600 hover:text-blue-700 text-sm">Sacar</Button>
-                  <Button variant="ghost" onClick={() => { if (confirm('¿Quitar?')) removeSampleMutation.mutate(selectedSample.id); }} className="text-red-500 hover:text-red-600 text-sm">Quitar</Button>
+                  {selectedSample.status === 'in_use' && selectedSample.box_id ? (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setReturnTarget(selectedSample);
+                        setShowReturnDialog(true);
+                        setShowDetailDialog(false);
+                      }}
+                      className="text-amber-700 hover:text-amber-800 text-sm"
+                    >
+                      Devolver
+                    </Button>
+                  ) : selectedSample.status !== 'in_use' && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        if (confirm('¿Sacar muestra? (+1 descongelación, deja hueco en la caja)')) {
+                          checkoutSample(selectedSample);
+                          setShowDetailDialog(false);
+                        }
+                      }}
+                      className="text-amber-600 hover:text-amber-700 text-sm"
+                    >
+                      Sacar
+                    </Button>
+                  )}
+                  <Button variant="ghost" onClick={() => { if (confirm('¿Quitar de la caja?')) removeSampleMutation.mutate(selectedSample.id); }} className="text-red-500 hover:text-red-600 text-sm">Quitar</Button>
                 </div>
               </div>
             </div>
@@ -1690,7 +1777,7 @@ export function BoxDetailPage() {
                 </div>
                 <div className="text-xs text-gray-500 space-y-1 bg-gray-50 rounded-lg p-3">
                   <p><strong>tipo</strong>: tissue, blood, serum, plasma, urine, csf, saliva, dna, rna, protein, other</p>
-                  <p><strong>estado</strong>: active, used, discarded, archived, contaminated</p>
+                  <p><strong>estado</strong>: active, in_use, used, discarded, archived, contaminated</p>
                   <p><strong>unidades</strong>: mL, µL, mg, µg, ng, mol/L, %, other</p>
                 </div>
                 <button onClick={handleDownloadTemplate} className="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium">
@@ -1751,6 +1838,13 @@ export function BoxDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ReturnSampleDialog
+        sample={returnTarget}
+        open={showReturnDialog}
+        onClose={() => { setShowReturnDialog(false); setReturnTarget(null); }}
+        onSuccess={() => invalidateBoxData()}
+      />
     </AppLayout>
   );
 }

@@ -8,27 +8,30 @@ import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Search, FlaskConical, Pencil, X, ChevronDown, Filter, Trash2, RotateCcw, SquareCheck as CheckSquare, Square, Beaker, Archive, Thermometer, Package2 } from 'lucide-react';
+import { Plus, Search, FlaskConical, Pencil, X, ChevronDown, Filter, Trash2, RotateCcw, SquareCheck as CheckSquare, Square, Beaker, Archive, Thermometer, Package2, ArrowUpFromLine } from 'lucide-react';
+import { useSampleCheckout } from '@/hooks/useSampleCheckout';
+import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
 import type { Sample, SampleType, SampleStatus, UnitType, Freezer, Box } from '@/types';
 
 const STATUS_LABEL: Record<string, string> = {
-  active: 'Activo', used: 'Usado', discarded: 'Descartado',
+  active: 'Activo', in_use: 'En uso', used: 'Usado', discarded: 'Descartado',
   archived: 'Archivado', contaminated: 'Contaminado',
 };
 const STATUS_BADGE: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
+  in_use: 'bg-amber-100 text-amber-800',
   used: 'bg-yellow-100 text-yellow-700',
   discarded: 'bg-red-100 text-red-700',
   archived: 'bg-gray-100 text-gray-600',
   contaminated: 'bg-red-900/20 text-red-800',
 };
 const STATUS_DOT: Record<string, string> = {
-  active: 'bg-green-500', used: 'bg-yellow-400', discarded: 'bg-red-500',
+  active: 'bg-green-500', in_use: 'bg-amber-500', used: 'bg-yellow-400', discarded: 'bg-red-500',
   archived: 'bg-gray-400', contaminated: 'bg-red-900',
 };
 
 const SAMPLE_TYPES: SampleType[] = ['tissue', 'blood', 'serum', 'plasma', 'urine', 'csf', 'saliva', 'dna', 'rna', 'protein', 'other'];
-const STATUSES: SampleStatus[] = ['active', 'used', 'discarded', 'archived', 'contaminated'];
+const STATUSES: SampleStatus[] = ['active', 'in_use', 'used', 'discarded', 'archived', 'contaminated'];
 const UNITS: UnitType[] = ['mL', 'µL', 'mg', 'µg', 'ng', 'mol/L', '%', 'other'];
 
 interface SampleFormData {
@@ -80,7 +83,9 @@ export function SamplesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState('');
   const [showBulkDialog, setShowBulkDialog] = useState(false);
-  const [sacando, setSacando] = useState<string | null>(null); // sample id being "sacado"
+  const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
+  const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const { checkoutSample, checkoutSamplesAsync, isCheckingOutSample, isCheckingOutSamples } = useSampleCheckout();
 
   const setF = useCallback(<K extends keyof Filters>(key: K, val: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: val }));
@@ -218,25 +223,6 @@ export function SamplesPage() {
     },
   });
 
-  // "Sacar muestra" — sets status=used, increments thaw_count
-  const sacarMuestra = useMutation({
-    mutationFn: async (s: Sample) => {
-      const newThaws = s.thaw_count + 1;
-      const { error } = await (supabase.from('samples') as any)
-        .update({ status: 'used', thaw_count: newThaws })
-        .eq('id', s.id);
-      if (error) throw error;
-      return { newThaws, maxThaws: s.max_thaws };
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['samples'] });
-      setSacando(null);
-      if (result.newThaws >= result.maxThaws) {
-        alert(`Advertencia: esta muestra ha alcanzado el máximo de descongelaciones (${result.maxThaws}).`);
-      }
-    },
-  });
-
   const openCreate = () => { setEditTarget(null); setForm(emptyForm); setFormError(''); setShowDialog(true); };
   const openEdit = (s: Sample) => {
     setEditTarget(s);
@@ -265,6 +251,25 @@ export function SamplesPage() {
   };
   const selectAll = () => setSelected(new Set(filtered.map((s) => s.id)));
   const clearSelect = () => setSelected(new Set());
+
+  const handleBulkCheckout = async () => {
+    const targets = filtered.filter(
+      (s: Sample & { deleted_at?: string | null }) => selected.has(s.id) && !s.deleted_at && s.status !== 'in_use',
+    );
+    if (targets.length === 0) {
+      alert('No hay muestras activas seleccionadas que se puedan sacar.');
+      return;
+    }
+    if (!confirm(`¿Sacar ${targets.length} muestra${targets.length !== 1 ? 's' : ''}? (+1 descongelación cada una)`)) {
+      return;
+    }
+    try {
+      await checkoutSamplesAsync(targets);
+      clearSelect();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Error al sacar muestras');
+    }
+  };
 
   const activeFilterCount = countActiveFilters(filters);
 
@@ -398,6 +403,15 @@ export function SamplesPage() {
                 >
                   <Archive className="w-3.5 h-3.5" /> Cambiar estado
                 </button>
+                {!filters.show_deleted && (
+                  <button
+                    onClick={handleBulkCheckout}
+                    disabled={isCheckingOutSamples}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-50"
+                  >
+                    <ArrowUpFromLine className="w-3.5 h-3.5" /> Sacar
+                  </button>
+                )}
                 {!filters.show_deleted ? (
                   <button
                     onClick={() => softDeleteMutation.mutate(Array.from(selected))}
@@ -491,10 +505,19 @@ export function SamplesPage() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1">
-                          {!s.deleted_at && (
+                          {!s.deleted_at && s.status === 'in_use' && s.box_id && (
                             <button
-                              onClick={() => { setSacando(s.id); sacarMuestra.mutate(s); }}
-                              disabled={sacando === s.id}
+                              onClick={() => { setReturnTarget(s); setShowReturnDialog(true); }}
+                              title="Devolver a la caja"
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors text-xs font-medium"
+                            >
+                              ↓
+                            </button>
+                          )}
+                          {!s.deleted_at && s.status !== 'in_use' && s.box_id && (
+                            <button
+                              onClick={() => { if (confirm('¿Sacar muestra? (+1 descongelación)')) checkoutSample(s); }}
+                              disabled={isCheckingOutSample}
                               title="Sacar muestra (+1 descongelación)"
                               className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors text-xs font-medium"
                             >
@@ -647,6 +670,12 @@ export function SamplesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ReturnSampleDialog
+        sample={returnTarget}
+        open={showReturnDialog}
+        onClose={() => { setShowReturnDialog(false); setReturnTarget(null); }}
+      />
     </AppLayout>
   );
 }

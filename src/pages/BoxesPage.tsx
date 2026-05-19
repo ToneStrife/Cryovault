@@ -80,11 +80,12 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     active: 'bg-green-100 text-green-700',
     full: 'bg-orange-100 text-orange-700',
+    in_use: 'bg-amber-100 text-amber-800',
     archived: 'bg-gray-100 text-gray-500',
     retired: 'bg-red-100 text-red-600',
   };
   const labels: Record<string, string> = {
-    active: 'Activo', full: 'Llena', archived: 'Archivada', retired: 'Retirada',
+    active: 'Activo', full: 'Llena', in_use: 'En uso', archived: 'Archivada', retired: 'Retirada',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || 'bg-gray-100 text-gray-500'}`}>
