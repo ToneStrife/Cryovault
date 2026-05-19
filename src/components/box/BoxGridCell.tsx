@@ -2,6 +2,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
 import type { Sample } from '@/types';
 import { cellDroppableId, type BoxCellDropData, type BoxSampleDragData } from '@/lib/boxGridDnd';
+import { BOX_GRID_CELL_CLASS } from '@/lib/boxGridLayout';
 
 const EMPTY_CELL_CLASS =
   'bg-white hover:bg-gray-50 border-gray-200';
@@ -74,24 +75,24 @@ export function BoxGridCell({
       {...(canDrag ? { ...listeners, ...attributes } : {})}
       onClick={handleClick}
       title={title}
-      className={`w-16 h-16 rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden touch-none ${cellClass} ${
+      className={`${BOX_GRID_CELL_CLASS} rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${cellClass} ${
         isDragging ? 'opacity-40' : ''
       } ${isEmpty && isOver ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-400 bg-blue-50' : ''} ${
         canDrag ? 'cursor-grab active:cursor-grabbing' : ''
       }`}
     >
       {sample ? (
-        <span className="text-[11px] font-bold leading-tight px-1 text-center break-all pointer-events-none">
+        <span className="text-[10px] sm:text-[11px] font-bold leading-tight px-0.5 text-center break-all pointer-events-none">
           {sample.sample_code}
         </span>
       ) : (
-        <Plus className="w-4 h-4 text-gray-200 pointer-events-none" />
+        <Plus className="w-3 h-3 sm:w-4 sm:h-4 text-gray-200 pointer-events-none" />
       )}
     </button>
   );
 }
 
-/** Plain cell without DnD (e.g. box in use). */
+/** Plain cell without DnD (e.g. box in use or mobile). */
 export function BoxGridCellStatic({
   row,
   col,
@@ -111,14 +112,14 @@ export function BoxGridCellStatic({
       type="button"
       onClick={() => onCellClick(row, col)}
       title={title}
-      className={`w-16 h-16 rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${cellClass}`}
+      className={`${BOX_GRID_CELL_CLASS} rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${cellClass}`}
     >
       {sample ? (
-        <span className="text-[11px] font-bold leading-tight px-1 text-center break-all">
+        <span className="text-[10px] sm:text-[11px] font-bold leading-tight px-0.5 text-center break-all">
           {sample.sample_code}
         </span>
       ) : (
-        <Plus className="w-4 h-4 text-gray-200" />
+        <Plus className="w-3 h-3 sm:w-4 sm:h-4 text-gray-200" />
       )}
     </button>
   );

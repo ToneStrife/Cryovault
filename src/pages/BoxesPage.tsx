@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -111,7 +112,12 @@ export function BoxesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
 
+  const isMobile = useIsMobile();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+
+  useEffect(() => {
+    if (isMobile && viewMode === 'list') setViewMode('grid');
+  }, [isMobile, viewMode]);
   const [freezerFilter, setFreezerFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [tempFilter, setTempFilter] = useState<string>('all');
@@ -440,7 +446,7 @@ export function BoxesPage() {
                 Ver archivadas
               </label>
             )}
-            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 ml-auto">
+            <div className="hidden md:flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 ml-auto">
               <button
                 onClick={() => setViewMode('grid')}
                 className={`p-1.5 rounded transition-colors ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
@@ -568,8 +574,8 @@ export function BoxesPage() {
               })}
             </div>
           ) : (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full">
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
+              <table className="w-full min-w-[520px]">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Nombre</th>

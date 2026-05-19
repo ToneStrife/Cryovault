@@ -431,8 +431,8 @@ export function UsersPage() {
                 <p>Sin usuarios registrados</p>
               </div>
             ) : (
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <table className="w-full">
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm overflow-x-auto">
+                <table className="w-full min-w-[480px]">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/60">
                       <th className="text-left text-xs font-semibold text-gray-500 px-5 py-3">Usuario</th>

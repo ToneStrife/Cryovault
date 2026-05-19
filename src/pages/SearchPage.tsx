@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -13,7 +13,9 @@ import { useSampleCheckout } from '@/hooks/useSampleCheckout';
 import { PlaceSampleDialog } from '@/components/PlaceSampleDialog';
 import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
 import type { Sample, SampleType, SampleStatus, UnitType, Freezer } from '@/types';
-import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
+import { PAGE_HEADER, PAGE_BODY, DIALOG_MOBILE } from '@/lib/layout';
+import { SampleResultCard } from '@/components/samples/SampleResultCard';
+import { MobileBulkBar } from '@/components/layout/MobileBulkBar';
 import { formFooterClass, selectClass } from '@/lib/formStyles';
 import { FormField } from '@/components/ui/FormField';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,6 +40,7 @@ const TEMP_OPTIONS = [
 export function SearchPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
   const { checkoutSample, checkoutSamplesAsync, isCheckingOutSamples } = useSampleCheckout();
@@ -68,7 +71,7 @@ export function SearchPage() {
   const [minThaws, setMinThaws] = useState('');
   const [maxThaws, setMaxThaws] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editTarget, setEditTarget] = useState<(Sample & { deleted_at?: string | null }) | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -394,7 +397,7 @@ export function SearchPage() {
             {showFilters && (
               <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">
                 {/* Row 1: type, status, project, patient */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Tipo de muestra</label>
                     <div className="relative">
@@ -523,7 +526,7 @@ export function SearchPage() {
               {isLoading ? 'Cargando...' : `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`}
             </p>
             {selected.size > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="hidden md:flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-blue-700 font-medium">{selected.size} seleccionada{selected.size !== 1 ? 's' : ''}</span>
                 <button onClick={clearSelect} className="text-xs text-gray-400 hover:text-gray-700">Limpiar</button>
                 <Button onClick={() => { setFormError(''); setShowBulkDialog(true); }} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -567,8 +570,52 @@ export function SearchPage() {
               <p className="text-sm mt-1">Prueba con otros criterios de búsqueda</p>
             </div>
           ) : (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-              <table className="w-full">
+            <>
+            <div className="md:hidden space-y-2 pb-24">
+              {filtered.map((s) => {
+                const boxEntry = s.box_id ? boxMap[s.box_id] : null;
+                const fz = boxEntry ? freezerMap[boxEntry.freezer_id] : null;
+                const isDeleted = !!(s as { deleted_at?: string | null }).deleted_at;
+                const secondary = [
+                  s.project,
+                  fz?.name,
+                  boxEntry?.name,
+                ].filter(Boolean).join(' · ');
+                return (
+                  <SampleResultCard
+                    key={s.id}
+                    sample={s}
+                    selected={selected.has(s.id)}
+                    onToggleSelect={() => toggleSelect(s.id)}
+                    onOpen={!isDeleted ? () => openEdit(s) : undefined}
+                    secondaryLine={secondary || undefined}
+                    menuItems={[
+                      { id: 'edit', label: 'Editar', onClick: () => openEdit(s) },
+                      {
+                        id: 'link',
+                        label: copiedSampleId === s.id ? 'Enlace copiado' : 'Copiar enlace',
+                        icon: <Link2 className="w-4 h-4 mr-2" />,
+                        onClick: () => handleCopySampleLink(s),
+                      },
+                      ...(!isDeleted && !s.box_id
+                        ? [{ id: 'place', label: 'Colocar en caja', icon: <MapPin className="w-4 h-4 mr-2" />, onClick: () => { setPlaceTarget(s); setShowPlaceDialog(true); } }]
+                        : []),
+                      ...(!isDeleted && s.status === 'in_use' && s.box_id
+                        ? [{ id: 'return', label: 'Devolver', icon: <ArrowDownToLine className="w-4 h-4 mr-2" />, onClick: () => { setReturnTarget(s); setShowReturnDialog(true); } }]
+                        : []),
+                      ...(!isDeleted && s.status !== 'in_use' && s.box_id
+                        ? [{ id: 'checkout', label: 'Sacar', icon: <ArrowUpFromLine className="w-4 h-4 mr-2" />, onClick: () => { if (confirm('¿Sacar muestra?')) checkoutSample(s); } }]
+                        : []),
+                      ...(boxEntry && !isDeleted
+                        ? [{ id: 'box', label: 'Ir a la caja', icon: <ArrowRight className="w-4 h-4 mr-2" />, onClick: () => navigate(boxPath(s.box_id!)) }]
+                        : []),
+                    ]}
+                  />
+                );
+              })}
+            </div>
+            <div className="hidden md:block bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm overflow-x-auto">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="px-4 py-3 w-10">
@@ -705,16 +752,17 @@ export function SearchPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>
 
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`bg-white border-gray-200 text-gray-900 ${DIALOG_MOBILE} sm:max-w-lg`}>
           <DialogHeader><DialogTitle>Editar muestra</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{formError}</p>}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1 col-span-2">
                 <label className="text-sm font-medium text-gray-700">Código</label>
                 <Input value={editForm.sample_code} onChange={(e) => f('sample_code', e.target.value)} className="font-mono" />
@@ -746,12 +794,12 @@ export function SearchPage() {
       </Dialog>
 
       <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`bg-white border-gray-200 text-gray-900 ${DIALOG_MOBILE} sm:max-w-2xl`}>
           <DialogHeader><DialogTitle>Editar {selected.size} muestras</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{formError}</p>}
             <p className="text-sm text-gray-500">Marca los campos que quieres aplicar. El código de muestra no se edita en grupo.</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 ['patient_code', 'Paciente', 'text'],
                 ['subject_code', 'Sujeto', 'text'],
@@ -792,6 +840,47 @@ export function SearchPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <MobileBulkBar
+        selectedCount={selected.size}
+        onClear={clearSelect}
+        primaryActions={[
+          {
+            id: 'edit',
+            label: 'Editar',
+            icon: <Pencil className="w-4 h-4" />,
+            onClick: () => { setFormError(''); setShowBulkDialog(true); },
+          },
+          ...(!showDeleted
+            ? [{
+                id: 'checkout',
+                label: 'Sacar',
+                icon: <ArrowUpFromLine className="w-4 h-4" />,
+                onClick: handleBulkCheckout,
+                disabled: isCheckingOutSamples,
+                variant: 'outline' as const,
+                className: 'text-amber-700 border-amber-200',
+              }]
+            : []),
+        ]}
+        overflowActions={[
+          ...(!showDeleted
+            ? [{
+                id: 'delete',
+                label: 'Eliminar',
+                icon: <Trash2 className="w-4 h-4" />,
+                onClick: () => softDeleteMutation.mutate(selectedIds),
+                className: 'text-red-600',
+              }]
+            : [{
+                id: 'restore',
+                label: 'Restaurar',
+                icon: <RotateCcw className="w-4 h-4" />,
+                onClick: () => restoreMutation.mutate(selectedIds),
+                className: 'text-green-600',
+              }]),
+        ]}
+      />
 
       <PlaceSampleDialog
         sample={placeTarget}

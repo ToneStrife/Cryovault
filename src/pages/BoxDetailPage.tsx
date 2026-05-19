@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine, Trash2, ArchiveRestore, MoreVertical, Link2 } from 'lucide-react';
+import { X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine, Trash2, ArchiveRestore, MoreVertical, Link2, Move } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
+import { PAGE_HEADER, PAGE_BODY, DIALOG_MOBILE } from '@/lib/layout';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import { MoveSampleInBoxDialog } from '@/components/box/MoveSampleInBoxDialog';
+import { SampleResultCard } from '@/components/samples/SampleResultCard';
+import { MobileBulkBar } from '@/components/layout/MobileBulkBar';
 import { boxPath, copyAppLink } from '@/lib/appUrl';
 import {
   formFooterClass,
@@ -38,19 +42,10 @@ import { canManageBoxes } from '@/lib/labPermissions';
 import { archiveBox, unarchiveBox, softDeleteBoxWithSamples, getBoxSampleCounts } from '@/lib/boxLifecycle';
 import { BoxDeleteConfirmDialog } from '@/components/box/BoxDeleteConfirmDialog';
 import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
-import {
-  DndContext,
-  DragOverlay,
-  closestCenter,
-  pointerWithin,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import type { CollisionDetection, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useSampleCheckout } from '@/hooks/useSampleCheckout';
 import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
-import { BoxGridCell, BoxGridCellStatic } from '@/components/box/BoxGridCell';
+import { BoxDetailGrid } from '@/components/box/BoxDetailGrid';
 import { positionLabel } from '@/lib/positionUtils';
 import type { BoxCellDropData, BoxSampleDragData } from '@/lib/boxGridDnd';
 
@@ -281,19 +276,22 @@ export function BoxDetailPage() {
   const [boxActionError, setBoxActionError] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<Sample | null>(null);
+  const isMobile = useIsMobile();
   const [activeDragSample, setActiveDragSample] = useState<Sample | null>(null);
   const [gridInteractionLocked, setGridInteractionLocked] = useState(false);
   const gridInteractionUnlockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const gridSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-  const gridCollisionDetection: CollisionDetection = useCallback((args) => {
-    const pointerCollisions = pointerWithin(args);
-    return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
-  }, []);
-
   useEffect(() => () => {
     if (gridInteractionUnlockRef.current) clearTimeout(gridInteractionUnlockRef.current);
   }, []);
+
+  useEffect(() => {
+    if (isMobile && viewMode === 'spreadsheet') {
+      setViewMode('grid');
+    }
+  }, [isMobile, viewMode]);
   const [bulkApply, setBulkApply] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState<SampleFormData>(emptyForm);
   const [formError, setFormError] = useState('');
@@ -440,6 +438,18 @@ export function BoxDetailPage() {
     });
     return m;
   }, [samples]);
+
+  const moveOccupiedKeys = useMemo(() => {
+    const set = new Set<string>();
+    samples.forEach((s) => {
+      if (s.position_row != null && s.position_column != null) {
+        set.add(`${s.position_row}_${s.position_column}`);
+      }
+    });
+    return set;
+  }, [samples]);
+
+  const useGridDnD = !boxInUse && !isMobile;
 
   const getSampleCellClass = useCallback((sample: Sample) => {
     if (sample.status === 'in_use') {
@@ -1254,6 +1264,12 @@ export function BoxDetailPage() {
                   <DropdownMenuItem onClick={handleExportXLSX} disabled={samples.length === 0}>
                     <Download className="w-4 h-4 mr-2" /> Exportar Excel
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handlePrint}>
+                    <Printer className="w-4 h-4 mr-2" /> Imprimir
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportImage}>
+                    <Image className="w-4 h-4 mr-2" /> Exportar imagen
+                  </DropdownMenuItem>
                   {canManage && !box.deleted_at && (
                     <>
                       <DropdownMenuSeparator />
@@ -1358,7 +1374,7 @@ export function BoxDetailPage() {
               <button onClick={() => handleSetViewMode('grid')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'grid' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                 <LayoutGrid className="w-4 h-4" /> Cuadrícula
               </button>
-              <button onClick={() => handleSetViewMode('spreadsheet')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'spreadsheet' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <button onClick={() => handleSetViewMode('spreadsheet')} className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'spreadsheet' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                 <Table2 className="w-4 h-4" /> Hoja de datos
               </button>
             </div>
@@ -1370,13 +1386,13 @@ export function BoxDetailPage() {
           {/* ── GRID VIEW ── */}
           {viewMode === 'grid' && (
             <>
-              <div className={`bg-white border border-gray-200 rounded-xl p-6 shadow-sm ${boxInUse ? 'opacity-75' : ''}`}>
-                <div className="flex items-center justify-between mb-5">
+              <div className={`bg-white border border-gray-200 rounded-xl p-3 sm:p-4 lg:p-6 shadow-sm ${boxInUse ? 'opacity-75' : ''}`}>
+                <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4 text-gray-400" />
                     <span className="text-sm font-semibold text-gray-700">Cuadrícula {rows}×{cols}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="hidden md:flex items-center gap-2">
                     <button onClick={handlePrint} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors">
                       <Printer className="w-3.5 h-3.5" /> Imprimir
                     </button>
@@ -1386,55 +1402,18 @@ export function BoxDetailPage() {
                   </div>
                 </div>
 
-                <DndContext
-                  sensors={gridSensors}
-                  collisionDetection={gridCollisionDetection}
-                  onDragStart={boxInUse ? () => {} : handleGridDragStart}
-                  onDragEnd={boxInUse ? () => {} : handleGridDragEnd}
-                >
-                <div className="overflow-auto">
-                  <div className="inline-block">
-                    {/* Column headers */}
-                    <div className="flex items-center gap-1 mb-1 pl-10">
-                      {Array.from({ length: cols }, (_, c) => (
-                        <div key={c} className="w-14 h-6 flex items-center justify-center text-xs text-gray-400 font-mono">{c + 1}</div>
-                      ))}
-                    </div>
-                    {Array.from({ length: rows }, (_, r) => (
-                      <div key={r} className="flex items-center gap-1 mb-1">
-                        <div className="w-9 h-14 flex items-center justify-center text-xs text-gray-400 font-mono flex-shrink-0">{String.fromCharCode(65 + r)}</div>
-                        {Array.from({ length: cols }, (_, c) => {
-                          const rowNum = r + 1;
-                          const colNum = c + 1;
-                          const cellSample = sampleMap[`${rowNum}_${colNum}`];
-                          const Cell = boxInUse ? BoxGridCellStatic : BoxGridCell;
-                          return (
-                            <Cell
-                              key={c}
-                              row={rowNum}
-                              col={colNum}
-                              sample={cellSample}
-                              positionLabelText={positionLabel(rowNum, colNum)}
-                              interactionLocked={boxInUse ? undefined : gridInteractionLocked}
-                              getSampleCellClass={getSampleCellClass}
-                              onCellClick={handleCellClick}
-                            />
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {!boxInUse && (
-                  <DragOverlay dropAnimation={null}>
-                    {activeDragSample ? (
-                      <div className="w-16 h-16 rounded border border-blue-500 bg-blue-600 text-white font-mono text-[11px] font-bold flex items-center justify-center shadow-lg px-1 text-center">
-                        {activeDragSample.sample_code}
-                      </div>
-                    ) : null}
-                  </DragOverlay>
-                )}
-                </DndContext>
+                <BoxDetailGrid
+                  rows={rows}
+                  cols={cols}
+                  sampleMap={sampleMap}
+                  useDnD={useGridDnD}
+                  interactionLocked={gridInteractionLocked}
+                  activeDragSample={activeDragSample}
+                  getSampleCellClass={getSampleCellClass}
+                  onCellClick={handleCellClick}
+                  onDragStart={handleGridDragStart}
+                  onDragEnd={handleGridDragEnd}
+                />
 
                 {/* Legend */}
                 <div className="flex items-center gap-5 mt-5 flex-wrap border-t border-gray-100 pt-4">
@@ -1449,9 +1428,14 @@ export function BoxDetailPage() {
                   <span className="flex items-center gap-1.5 text-xs text-gray-500">
                     <span className="w-3 h-3 rounded bg-amber-400" /> En uso (fuera de celda)
                   </span>
-                  {!boxInUse && (
+                  {!boxInUse && !isMobile && (
                     <span className="text-xs text-gray-400 w-full sm:w-auto">
                       Arrastra una muestra a una celda vacía para cambiar su posición.
+                    </span>
+                  )}
+                  {!boxInUse && isMobile && (
+                    <span className="text-xs text-gray-400 w-full">
+                      Desliza para ver toda la cuadrícula. Abre una muestra y usa «Mover posición».
                     </span>
                   )}
                 </div>
@@ -1466,7 +1450,7 @@ export function BoxDetailPage() {
                     <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{sortedSamples.length}</span>
                   </div>
                   {selectedBoxIds.length > 0 && (
-                    <div className="flex items-center gap-2">
+                    <div className="hidden md:flex items-center gap-2 flex-wrap">
                       <span className="text-sm text-blue-700 font-medium">{selectedBoxIds.length} seleccionada{selectedBoxIds.length !== 1 ? 's' : ''}</span>
                       <button onClick={clearSelect} className="text-xs text-gray-400 hover:text-gray-700">Limpiar</button>
                       <Button onClick={() => { setFormError(''); setShowBulkDialog(true); }} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -1505,7 +1489,39 @@ export function BoxDetailPage() {
                     <button onClick={openAllocate} className="mt-3 text-sm text-blue-600 hover:underline font-medium">Asignar primera muestra</button>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <>
+                  <div className="md:hidden p-3 space-y-2 pb-24">
+                    {sortedSamples.map((s) => (
+                      <SampleResultCard
+                        key={s.id}
+                        sample={s}
+                        compact
+                        selected={selected.has(s.id)}
+                        onToggleSelect={() => toggleSelect(s.id)}
+                        onOpen={() => openSampleDetail(s)}
+                        statusColorClass={STATUS_BADGE[s.status]}
+                        menuItems={[
+                          {
+                            id: 'edit',
+                            label: 'Editar',
+                            onClick: () => openSampleDetail(s),
+                          },
+                          ...(!boxInUse && s.status === 'active' && s.position_row != null
+                            ? [{
+                                id: 'move',
+                                label: 'Mover posición',
+                                icon: <Move className="w-4 h-4 mr-2" />,
+                                onClick: () => {
+                                  setMoveTarget(s);
+                                  setShowMoveDialog(true);
+                                },
+                              }]
+                            : []),
+                        ]}
+                      />
+                    ))}
+                  </div>
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/60">
@@ -1563,6 +1579,7 @@ export function BoxDetailPage() {
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </div>
             </>
@@ -1698,7 +1715,7 @@ export function BoxDetailPage() {
 
       {/* ── ADD SAMPLE DIALOG ── */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl">
+        <DialogContent className={`bg-white border-gray-200 text-gray-900 rounded-2xl shadow-2xl ${DIALOG_MOBILE}`}>
           <DialogHeader>
             <DialogTitle className="text-gray-900">
               Añadir muestra en{' '}
@@ -1772,7 +1789,7 @@ export function BoxDetailPage() {
 
       {/* ── SAMPLE DETAIL DIALOG ── */}
       <Dialog open={showDetailDialog} onOpenChange={(open) => !open && setShowDetailDialog(false)}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl">
+        <DialogContent className={`bg-white border-gray-200 text-gray-900 rounded-2xl ${DIALOG_MOBILE} sm:max-w-lg`}>
           <DialogHeader>
             <DialogTitle className="text-gray-900 text-xl font-bold">Editar Muestra</DialogTitle>
           </DialogHeader>
@@ -1835,9 +1852,21 @@ export function BoxDetailPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100">
-                <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="px-4">Cancelar</Button>
+                  {!boxInUse && selectedSample.status === 'active' && selectedSample.position_row != null && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setMoveTarget(selectedSample);
+                        setShowMoveDialog(true);
+                      }}
+                      className="border-blue-200 text-blue-700"
+                    >
+                      <Move className="w-4 h-4 mr-1" /> Mover posición
+                    </Button>
+                  )}
                   <Button onClick={() => updateSampleMutation.mutate({
                     sample_code: editForm.sample_code,
                     patient_code: editForm.patient_code,
@@ -1889,14 +1918,14 @@ export function BoxDetailPage() {
 
       {/* ── BULK EDIT DIALOG ── */}
       <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl">
+        <DialogContent className={`bg-white border-gray-200 text-gray-900 rounded-2xl ${DIALOG_MOBILE} sm:max-w-2xl`}>
           <DialogHeader>
             <DialogTitle>Editar {selectedBoxIds.length} muestras</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{formError}</p>}
             <p className="text-sm text-gray-500">Marca los campos que quieres aplicar. El código de muestra no se edita en grupo.</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 ['patient_code', 'Paciente', 'text'],
                 ['subject_code', 'Sujeto', 'text'],
@@ -2158,6 +2187,60 @@ export function BoxDetailPage() {
         inUseCount={deleteInUseCount}
         isPending={deleteBoxMutation.isPending}
         onConfirm={() => deleteBoxMutation.mutate()}
+      />
+
+      <MoveSampleInBoxDialog
+        open={showMoveDialog}
+        sample={moveTarget}
+        rows={rows}
+        cols={cols}
+        occupiedKeys={moveOccupiedKeys}
+        currentRow={moveTarget?.position_row ?? null}
+        currentCol={moveTarget?.position_column ?? null}
+        onClose={() => { setShowMoveDialog(false); setMoveTarget(null); }}
+        onMove={async (row, col) => {
+          if (!moveTarget) return;
+          await moveSampleAsync({ sample: moveTarget, row, col });
+          setShowDetailDialog(false);
+          queryClient.invalidateQueries({ queryKey: ['box-samples', boxId] });
+        }}
+      />
+
+      <MobileBulkBar
+        selectedCount={selectedBoxIds.length}
+        onClear={clearSelect}
+        primaryActions={[
+          {
+            id: 'edit',
+            label: 'Editar',
+            icon: <Pencil className="w-4 h-4" />,
+            onClick: () => { setFormError(''); setShowBulkDialog(true); },
+          },
+          ...(!boxInUse
+            ? [{
+                id: 'checkout',
+                label: 'Sacar',
+                icon: <ArrowUpFromLine className="w-4 h-4" />,
+                onClick: handleBulkCheckout,
+                disabled: isCheckingOutSamples,
+                variant: 'outline' as const,
+                className: 'text-amber-700 border-amber-200',
+              }]
+            : []),
+        ]}
+        overflowActions={[
+          {
+            id: 'remove',
+            label: 'Quitar de caja',
+            icon: <X className="w-4 h-4" />,
+            onClick: () => {
+              if (confirm(`¿Quitar ${selectedBoxIds.length} muestra(s) de esta caja?`)) {
+                removeSelectedFromBoxMutation.mutate(selectedBoxIds);
+              }
+            },
+            className: 'text-red-600',
+          },
+        ]}
       />
     </AppLayout>
   );
