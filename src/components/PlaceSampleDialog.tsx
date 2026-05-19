@@ -5,6 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useSampleCheckout } from '@/hooks/useSampleCheckout';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { FormField } from '@/components/ui/FormField';
+import { selectClass } from '@/lib/formStyles';
 import type { Sample, Freezer, Box } from '@/types';
 import { Plus } from 'lucide-react';
 
@@ -129,15 +131,14 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
           <p className="text-sm text-gray-500 font-mono">{sample.sample_code}</p>
         )}
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{error}</p>
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</p>
         )}
         <div className="space-y-4 mt-2">
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Congelador</label>
+          <FormField label="Congelador">
             <select
               value={freezerId}
               onChange={(e) => handleFreezerChange(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+              className={selectClass}
             >
               <option value="">Seleccionar...</option>
               {freezers.map((f) => (
@@ -146,14 +147,13 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
                 </option>
               ))}
             </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Caja</label>
+          </FormField>
+          <FormField label="Caja">
             <select
               value={boxId}
               onChange={(e) => handleBoxChange(e.target.value)}
               disabled={!freezerId}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white disabled:opacity-50"
+              className={selectClass}
             >
               <option value="">Seleccionar...</option>
               {availableBoxes.map((b) => (
@@ -163,13 +163,12 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
               ))}
             </select>
             {freezerId && availableBoxes.length === 0 && (
-              <p className="text-xs text-amber-600">No hay cajas disponibles (las cajas «en uso» no admiten nuevas muestras).</p>
+              <p className="text-xs text-amber-600 mt-1">No hay cajas disponibles (las cajas «en uso» no admiten nuevas muestras).</p>
             )}
-          </div>
+          </FormField>
           {selectedBox && rows > 0 && cols > 0 && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Posición libre</label>
-              <div className="overflow-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+            <FormField label="Posición libre">
+              <div className="overflow-auto rounded-2xl border border-gray-100 bg-gradient-to-b from-gray-50 to-white p-4 shadow-inner">
                 <div className="inline-block">
                   <div className="flex items-center gap-0.5 mb-1 pl-8">
                     {Array.from({ length: cols }, (_, c) => (
@@ -194,12 +193,12 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
                             type="button"
                             disabled={occupied}
                             onClick={() => setSelectedCell({ row, col })}
-                            className={`w-10 h-10 rounded border text-xs font-mono transition-colors flex items-center justify-center ${
+                            className={`w-10 h-10 rounded-lg border text-xs font-mono transition-all flex items-center justify-center shadow-sm ${
                               occupied
-                                ? 'bg-gray-200 border-gray-300 cursor-not-allowed text-gray-400'
+                                ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-300'
                                 : selected
-                                  ? 'bg-blue-600 border-blue-600 text-white'
-                                  : 'bg-white border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-md scale-105'
+                                  : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 hover:shadow'
                             }`}
                           >
                             {occupied ? '·' : <Plus className="w-3 h-3 text-gray-300" />}
@@ -210,10 +209,10 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
                   ))}
                 </div>
               </div>
-            </div>
+            </FormField>
           )}
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={handleClose} className="flex-1 border-gray-300">
+            <Button type="button" variant="outline" onClick={handleClose} className="flex-1 border-gray-200">
               Cancelar
             </Button>
             <Button

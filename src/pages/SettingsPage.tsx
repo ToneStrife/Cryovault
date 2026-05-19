@@ -56,7 +56,7 @@ function OptionListEditor({ title, description, values, labels = {}, disabled, o
           size="sm"
           disabled={disabled}
           onClick={() => onChange([...values, ''])}
-          className="border-gray-300 text-gray-700"
+          className="text-gray-700"
         >
           <Plus className="w-3.5 h-3.5" />
           Añadir

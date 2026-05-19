@@ -244,7 +244,7 @@ export function ProfilePage() {
                 type="submit"
                 variant="outline"
                 disabled={changePasswordMutation.isPending}
-                className="border-gray-300 text-gray-700"
+                className="text-gray-700"
               >
                 {changePasswordMutation.isPending ? 'Actualizando...' : 'Cambiar contraseña'}
               </Button>

@@ -14,6 +14,9 @@ import { PlaceSampleDialog } from '@/components/PlaceSampleDialog';
 import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
 import type { Sample, SampleType, SampleStatus, UnitType, Freezer } from '@/types';
 import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
+import { formFooterClass, selectClass } from '@/lib/formStyles';
+import { FormField } from '@/components/ui/FormField';
+import { Textarea } from '@/components/ui/textarea';
 import { boxPath, copyAppLink, sampleSearchPath } from '@/lib/appUrl';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -338,7 +341,7 @@ export function SearchPage() {
     onError: (e: any) => setFormError(e.message),
   });
 
-  const selectClass = 'w-full appearance-none pl-3 pr-7 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const filterSelectClass = `${selectClass} pl-3 pr-7 py-2 text-gray-700`;
 
   return (
     <AppLayout>
@@ -395,7 +398,7 @@ export function SearchPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Tipo de muestra</label>
                     <div className="relative">
-                      <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={selectClass}>
+                      <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={filterSelectClass}>
                         <option value="">Todos los tipos</option>
                         {sampleTypes.map((t) => <option key={t} value={t}>{labelOption(t, SAMPLE_TYPE_LABEL)}</option>)}
                       </select>
@@ -405,7 +408,7 @@ export function SearchPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Estado</label>
                     <div className="relative">
-                      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
+                      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={filterSelectClass}>
                         <option value="">Todos los estados</option>
                         {statuses.map((s) => (
                           <option key={s} value={s}>{labelOption(s, SAMPLE_STATUS_LABEL)}</option>
@@ -417,7 +420,7 @@ export function SearchPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Proyecto</label>
                     <div className="relative">
-                      <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className={selectClass}>
+                      <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className={filterSelectClass}>
                         <option value="">Todos los proyectos</option>
                         {projects.map((p) => <option key={p} value={p}>{p}</option>)}
                       </select>
@@ -443,7 +446,7 @@ export function SearchPage() {
                       <select
                         value={freezerFilter}
                         onChange={(e) => { setFreezerFilter(e.target.value); setBoxFilter(''); }}
-                        className={selectClass}
+                        className={filterSelectClass}
                       >
                         <option value="">Todos los congeladores</option>
                         {freezers.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -454,7 +457,7 @@ export function SearchPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Caja</label>
                     <div className="relative">
-                      <select value={boxFilter} onChange={(e) => setBoxFilter(e.target.value)} className={selectClass}>
+                      <select value={boxFilter} onChange={(e) => setBoxFilter(e.target.value)} className={filterSelectClass}>
                         <option value="">Todas las cajas</option>
                         {filteredBoxOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                       </select>
@@ -464,7 +467,7 @@ export function SearchPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500 flex items-center gap-1"><Thermometer className="w-3 h-3" /> Temperatura</label>
                     <div className="relative">
-                      <select value={tempFilter} onChange={(e) => setTempFilter(e.target.value)} className={selectClass}>
+                      <select value={tempFilter} onChange={(e) => setTempFilter(e.target.value)} className={filterSelectClass}>
                         <option value="">Cualquier temperatura</option>
                         {TEMP_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
@@ -493,7 +496,7 @@ export function SearchPage() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Ubicación</label>
-                    <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={selectClass}>
+                    <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={filterSelectClass}>
                       <option value="">Todas</option>
                       <option value="unplaced">Sin caja</option>
                       <option value="in_use">En uso</option>
@@ -714,26 +717,28 @@ export function SearchPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1 col-span-2">
                 <label className="text-sm font-medium text-gray-700">Código</label>
-                <Input value={editForm.sample_code} onChange={(e) => f('sample_code', e.target.value)} className="border-gray-300 font-mono" />
+                <Input value={editForm.sample_code} onChange={(e) => f('sample_code', e.target.value)} className="font-mono" />
               </div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Paciente</label><Input value={editForm.patient_code} onChange={(e) => f('patient_code', e.target.value)} className="border-gray-300" /></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Sujeto</label><Input value={editForm.subject_code} onChange={(e) => f('subject_code', e.target.value)} className="border-gray-300" /></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Proyecto</label><Input value={editForm.project} onChange={(e) => f('project', e.target.value)} className="border-gray-300" /></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Subtipo</label><Input value={editForm.subtype} onChange={(e) => f('subtype', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Paciente</label><Input value={editForm.patient_code} onChange={(e) => f('patient_code', e.target.value)} /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Sujeto</label><Input value={editForm.subject_code} onChange={(e) => f('subject_code', e.target.value)} /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Proyecto</label><Input value={editForm.project} onChange={(e) => f('project', e.target.value)} /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Subtipo</label><Input value={editForm.subtype} onChange={(e) => f('subtype', e.target.value)} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Tipo</label><select value={editForm.sample_type} onChange={(e) => f('sample_type', e.target.value)} className={selectClass}>{sampleTypes.map((t) => <option key={t} value={t}>{labelOption(t, SAMPLE_TYPE_LABEL)}</option>)}</select></div>
               <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Estado</label><select value={editForm.status} onChange={(e) => f('status', e.target.value)} className={selectClass}>{statuses.map((s) => <option key={s} value={s}>{labelOption(s, SAMPLE_STATUS_LABEL)}</option>)}</select></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Volumen</label><Input type="number" step="0.001" value={editForm.volume} onChange={(e) => f('volume', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Volumen</label><Input type="number" step="0.001" value={editForm.volume} onChange={(e) => f('volume', e.target.value)} /></div>
               <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Unidades</label><select value={editForm.units} onChange={(e) => f('units', e.target.value)} className={selectClass}>{units.map((u) => <option key={u} value={u}>{u}</option>)}</select></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Concentración</label><Input type="number" step="0.001" value={editForm.concentration} onChange={(e) => f('concentration', e.target.value)} className="border-gray-300" /></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Máx. descong.</label><Input type="number" min={1} value={editForm.max_thaws} onChange={(e) => f('max_thaws', e.target.value)} className="border-gray-300" /></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Fecha congelación</label><Input type="date" value={editForm.freeze_date} onChange={(e) => f('freeze_date', e.target.value)} className="border-gray-300" /></div>
-              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Fecha extracción</label><Input type="date" value={editForm.collection_date} onChange={(e) => f('collection_date', e.target.value)} className="border-gray-300" /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Concentración</label><Input type="number" step="0.001" value={editForm.concentration} onChange={(e) => f('concentration', e.target.value)} /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Máx. descong.</label><Input type="number" min={1} value={editForm.max_thaws} onChange={(e) => f('max_thaws', e.target.value)} /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Fecha congelación</label><Input type="date" value={editForm.freeze_date} onChange={(e) => f('freeze_date', e.target.value)} /></div>
+              <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Fecha extracción</label><Input type="date" value={editForm.collection_date} onChange={(e) => f('collection_date', e.target.value)} /></div>
             </div>
-            <div className="space-y-1"><label className="text-sm font-medium text-gray-700">Notas</label><Input value={editForm.notes} onChange={(e) => f('notes', e.target.value)} className="border-gray-300" /></div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={closeEdit} className="flex-1 border-gray-300">Cancelar</Button>
+            <FormField label="Notas">
+              <Textarea value={editForm.notes} onChange={(e) => f('notes', e.target.value)} placeholder="Observaciones..." rows={3} />
+            </FormField>
+            <div className={formFooterClass}>
+              <Button type="button" variant="outline" onClick={closeEdit} className="flex-1 border-gray-200">Cancelar</Button>
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Guardar</Button>
             </div>
           </div>
@@ -764,7 +769,7 @@ export function SearchPage() {
                     <input type="checkbox" checked={!!bulkApply[key]} onChange={() => toggleBulkField(key)} className="rounded border-gray-300 text-blue-600" />
                     {label}
                   </span>
-                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="border-gray-300 disabled:opacity-40" />
+                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
                 </label>
               ))}
               <label className="space-y-1">

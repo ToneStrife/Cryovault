@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import type { Sample, Box } from '@/types';
 import { Plus } from 'lucide-react';
+import { FormField } from '@/components/ui/FormField';
+import { formFooterClass } from '@/lib/formStyles';
 
 interface ReturnSampleDialogProps {
   sample: Sample | null;
@@ -101,7 +103,8 @@ export function ReturnSampleDialog({ sample, open, onClose, onSuccess }: ReturnS
           <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{error}</p>
         )}
         {box && rows > 0 && cols > 0 && (
-          <div className="overflow-auto border border-gray-200 rounded-lg p-3 bg-gray-50 mt-3">
+          <FormField label="Posición libre">
+          <div className="overflow-auto rounded-2xl border border-gray-100 bg-gradient-to-b from-gray-50 to-white p-4 shadow-inner">
             <div className="inline-block">
               <div className="flex items-center gap-0.5 mb-1 pl-8">
                 {Array.from({ length: cols }, (_, c) => (
@@ -126,12 +129,12 @@ export function ReturnSampleDialog({ sample, open, onClose, onSuccess }: ReturnS
                         type="button"
                         disabled={occupied}
                         onClick={() => setSelectedCell({ row, col })}
-                        className={`w-10 h-10 rounded border text-xs font-mono transition-colors flex items-center justify-center ${
+                        className={`w-10 h-10 rounded-lg border text-xs font-mono transition-all flex items-center justify-center shadow-sm ${
                           occupied
-                            ? 'bg-gray-200 border-gray-300 cursor-not-allowed text-gray-400'
+                            ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-300'
                             : selected
-                              ? 'bg-blue-600 border-blue-600 text-white'
-                              : 'bg-white border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md scale-105'
+                              : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 hover:shadow'
                         }`}
                       >
                         {occupied ? '·' : <Plus className="w-3 h-3 text-gray-300" />}
@@ -142,9 +145,10 @@ export function ReturnSampleDialog({ sample, open, onClose, onSuccess }: ReturnS
               ))}
             </div>
           </div>
+          </FormField>
         )}
-        <div className="flex gap-3 pt-4">
-          <Button type="button" variant="outline" onClick={handleClose} className="flex-1 border-gray-300">
+        <div className={formFooterClass}>
+          <Button type="button" variant="outline" onClick={handleClose} className="flex-1 border-gray-200">
             Cancelar
           </Button>
           <Button

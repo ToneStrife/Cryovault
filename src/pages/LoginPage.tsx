@@ -77,7 +77,6 @@ export function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isSubmitting}
                 required
-                className="text-gray-900 placeholder:text-gray-400"
               />
             </div>
             <div>
@@ -94,7 +93,6 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isSubmitting}
                 required
-                className="text-gray-900 placeholder:text-gray-400"
               />
             </div>
             <Button

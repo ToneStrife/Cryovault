@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Users, Shield, ChevronDown, UserPlus, Mail, Clock, X, Check, KeyRound, Building2 } from 'lucide-react';
 import type { Laboratory, Profile, UserRole } from '@/types';
+import { selectClass } from '@/lib/formStyles';
 
 const LAB_ROLES: UserRole[] = ['admin', 'researcher', 'technician', 'read_only'];
 
@@ -516,7 +517,7 @@ export function UsersPage() {
             {labError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{labError}</p>}
             <div className="space-y-1">
               <label className="text-sm font-medium text-gray-700">Nombre</label>
-              <Input value={labName} onChange={(e) => setLabName(e.target.value)} placeholder="Laboratorio de Oncología" className="border-gray-300" autoFocus />
+              <Input value={labName} onChange={(e) => setLabName(e.target.value)} placeholder="Laboratorio de Oncología" autoFocus />
               <p className="text-xs text-gray-400">Identificador: <span className="font-mono">{slugifyLaboratory(labName)}</span></p>
             </div>
             <div className="flex gap-3">
@@ -562,7 +563,7 @@ export function UsersPage() {
                   <select
                     value={newLaboratory}
                     onChange={(e) => setNewLaboratory(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={selectClass}
                   >
                     {laboratoryOptions.map((lab) => <option key={lab.slug} value={lab.slug}>{lab.name}</option>)}
                   </select>
@@ -701,7 +702,7 @@ export function UsersPage() {
               <label className="text-sm font-medium text-gray-700">Email</label>
               <Input
                 type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="usuario@laboratorio.es" className="border-gray-300" autoFocus
+                placeholder="usuario@laboratorio.es" autoFocus
               />
             </div>
             {isSuperAdmin ? (
@@ -730,7 +731,7 @@ export function UsersPage() {
                 <select
                   value={inviteLaboratory}
                   onChange={(e) => setInviteLaboratory(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={selectClass}
                 >
                   {laboratoryOptions.map((lab) => <option key={lab.slug} value={lab.slug}>{lab.name}</option>)}
                 </select>

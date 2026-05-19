@@ -25,6 +25,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
 import { boxPath, copyAppLink } from '@/lib/appUrl';
+import {
+  formFooterClass,
+  formSectionClass,
+  formSectionTitleClass,
+  labelClass,
+  selectClass,
+  spreadsheetCellClass,
+} from '@/lib/formStyles';
+import { Textarea } from '@/components/ui/textarea';
 import { canManageBoxes } from '@/lib/labPermissions';
 import { archiveBox, unarchiveBox, softDeleteBoxWithSamples, getBoxSampleCounts } from '@/lib/boxLifecycle';
 import { BoxDeleteConfirmDialog } from '@/components/box/BoxDeleteConfirmDialog';
@@ -1028,7 +1037,6 @@ export function BoxDetailPage() {
     : '';
 
   const f = (key: keyof SampleFormData, val: string) => setForm((prev) => ({ ...prev, [key]: val }));
-  const selectClass = 'w-full appearance-none px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40';
 
   if (boxLoading || !box) {
     return (
@@ -1654,7 +1662,7 @@ export function BoxDetailPage() {
                                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLInputElement).blur(); } }}
                                   disabled={isSaving}
                                   placeholder={isNew && col.key === 'sample_code' ? 'Nuevo…' : ''}
-                                  className={`w-full px-2 py-1.5 text-xs bg-transparent border-0 text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400 rounded ${isNew && !sr.sample_code && col.key === 'sample_code' ? 'placeholder:text-gray-300' : ''}`}
+                                  className={spreadsheetCellClass}
                                 />
                               </td>
                             );
@@ -1697,54 +1705,63 @@ export function BoxDetailPage() {
               <span className="text-blue-600 font-mono">{selectedCell ? positionLabel(selectedCell.row, selectedCell.col) : ''}</span>
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleAddSubmit} className="space-y-3 mt-2">
+          <form onSubmit={handleAddSubmit} className="space-y-4 mt-2">
             {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{formError}</p>}
+            <div className={formSectionClass}>
+              <p className={formSectionTitleClass}>Identificación</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1 col-span-2">
-                <label className="text-sm font-medium text-gray-700">Código de muestra *</label>
-                <Input value={form.sample_code} onChange={(e) => f('sample_code', e.target.value)} placeholder="SMP-2024-001" className="border-gray-300 text-gray-900 font-mono" autoFocus />
+                <label className={labelClass}>Código de muestra *</label>
+                <Input value={form.sample_code} onChange={(e) => f('sample_code', e.target.value)} placeholder="SMP-2024-001" className="font-mono" autoFocus />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Código paciente</label>
-                <Input value={form.patient_code} onChange={(e) => f('patient_code', e.target.value)} placeholder="PAT-001" className="border-gray-300 text-gray-900" />
+                <label className={labelClass}>Código paciente</label>
+                <Input value={form.patient_code} onChange={(e) => f('patient_code', e.target.value)} placeholder="PAT-001" />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Proyecto</label>
-                <Input value={form.project} onChange={(e) => f('project', e.target.value)} placeholder="Proyecto-X" className="border-gray-300 text-gray-900" />
+                <label className={labelClass}>Proyecto</label>
+                <Input value={form.project} onChange={(e) => f('project', e.target.value)} placeholder="Proyecto-X" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            </div>
+            <div className={formSectionClass}>
+              <p className={formSectionTitleClass}>Tipo y estado</p>
+              <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Tipo *</label>
-                <select value={form.sample_type} onChange={(e) => f('sample_type', e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label className={labelClass}>Tipo *</label>
+                <select value={form.sample_type} onChange={(e) => f('sample_type', e.target.value)} className={selectClass}>
                   {sampleTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Estado</label>
-                <select value={form.status} onChange={(e) => f('status', e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label className={labelClass}>Estado</label>
+                <select value={form.status} onChange={(e) => f('status', e.target.value)} className={selectClass}>
                   {statuses.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            </div>
+            <div className={formSectionClass}>
+              <p className={formSectionTitleClass}>Volumen y notas</p>
+              <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1 col-span-2">
-                <label className="text-sm font-medium text-gray-700">Volumen</label>
-                <Input type="number" value={form.volume} onChange={(e) => f('volume', e.target.value)} placeholder="0.5" className="border-gray-300 text-gray-900" />
+                <label className={labelClass}>Volumen</label>
+                <Input type="number" value={form.volume} onChange={(e) => f('volume', e.target.value)} placeholder="0.5" />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Unidad</label>
-                <select value={form.units} onChange={(e) => f('units', e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label className={labelClass}>Unidad</label>
+                <select value={form.units} onChange={(e) => f('units', e.target.value)} className={selectClass}>
                   {units.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700">Notas</label>
-              <Input value={form.notes} onChange={(e) => f('notes', e.target.value)} placeholder="Observaciones..." className="border-gray-300 text-gray-900" />
+              <label className={labelClass}>Notas</label>
+              <Textarea value={form.notes} onChange={(e) => f('notes', e.target.value)} placeholder="Observaciones..." rows={3} />
             </div>
-            <div className="flex gap-3 pt-1">
-              <Button type="button" variant="outline" onClick={closeAddDialog} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
+            </div>
+            <div className={formFooterClass}>
+              <Button type="button" variant="outline" onClick={closeAddDialog} className="flex-1 border-gray-200 text-gray-700">Cancelar</Button>
               <Button type="submit" disabled={addSampleMutation.isPending} className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white">
                 {addSampleMutation.isPending ? 'Guardando...' : 'Añadir muestra'}
               </Button>
@@ -1769,7 +1786,7 @@ export function BoxDetailPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Estado</p>
-                  <select value={editForm.status} onChange={(e) => setEditForm(p => ({...p, status: e.target.value as SampleStatus}))} className="text-sm border rounded-full px-3 py-1 mt-1 bg-white">
+                  <select value={editForm.status} onChange={(e) => setEditForm(p => ({...p, status: e.target.value as SampleStatus}))} className={`${selectClass} mt-1`}>
                     {statuses.map(s => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
                   </select>
                 </div>
@@ -1792,7 +1809,7 @@ export function BoxDetailPage() {
                       <select
                         value={(editForm as any)[key]}
                         onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
-                        className="w-full text-sm bg-white border border-gray-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500"
+                        className={selectClass}
                       >
                         {options?.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
@@ -1801,7 +1818,7 @@ export function BoxDetailPage() {
                         value={(editForm as any)[key]}
                         onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
                         type={type === 'number' ? 'number' : 'text'}
-                        className="text-sm bg-white h-9"
+                        className="h-9"
                       />
                     )}
                   </div>
@@ -1810,10 +1827,11 @@ export function BoxDetailPage() {
 
               <div className="space-y-1">
                 <p className="text-xs text-gray-500 font-medium">Notas</p>
-                <textarea
+                <Textarea
                   value={editForm.notes}
                   onChange={(e) => setEditForm(p => ({...p, notes: e.target.value}))}
-                  className="w-full rounded-lg p-3 text-sm border-gray-300 min-h-[80px] focus:ring-1 focus:ring-blue-500"
+                  placeholder="Observaciones..."
+                  rows={3}
                 />
               </div>
 
@@ -1896,7 +1914,7 @@ export function BoxDetailPage() {
                     <input type="checkbox" checked={!!bulkApply[key]} onChange={() => toggleBulkField(key)} className="rounded border-gray-300 text-blue-600" />
                     {label}
                   </span>
-                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="border-gray-300 disabled:opacity-40" />
+                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
                 </label>
               ))}
               <label className="space-y-1">
@@ -1927,8 +1945,8 @@ export function BoxDetailPage() {
                 </select>
               </label>
             </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowBulkDialog(false)} className="flex-1 border-gray-300">Cancelar</Button>
+            <div className={formFooterClass}>
+              <Button type="button" variant="outline" onClick={() => setShowBulkDialog(false)} className="flex-1 border-gray-200">Cancelar</Button>
               <Button onClick={() => bulkUpdateMutation.mutate()} disabled={bulkUpdateMutation.isPending} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Aplicar cambios</Button>
             </div>
           </div>
