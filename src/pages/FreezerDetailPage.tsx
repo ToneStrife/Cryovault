@@ -16,9 +16,13 @@ import {
 import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import {
   ChevronLeft, Plus, Snowflake, MapPin, Thermometer,
-  Pencil, Layers, Package, Upload, X, ChevronDown, ChevronRight, LogOut, GripVertical,
+  Pencil, Layers, Package, Upload, X, ChevronDown, ChevronRight, LogOut, GripVertical, Trash2,
 } from 'lucide-react';
 import { BOX_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
+import { ensureFreezerZones, fetchFreezerZones, syncFreezerZones } from '@/lib/freezerZones';
+import { deleteFreezerZone, deleteRack } from '@/lib/freezerLayout';
+import { canManageFreezerLayout } from '@/lib/labPermissions';
+import { syncRackZones } from '@/lib/rackZones';
 import type { Freezer, Box as BoxType, Rack, FreezerZone, RackZone } from '@/types';
 
 interface BoxFormData {
@@ -80,13 +84,15 @@ function DraggableBoxCard({
     data: { type: 'box', boxId: box.id },
   });
   const total = box.rows * box.columns;
-  const pct = Math.round((box.occupancy / total) * 100);
+  const pctRaw = total > 0 ? Math.round((box.occupancy / total) * 100) : 0;
+  const pct = Math.min(100, pctRaw);
+  const overCapacity = total > 0 && box.occupancy > total;
 
   return (
     <div
       ref={setNodeRef}
-      className={`group bg-white border border-gray-200 rounded-lg px-2 py-1.5 flex items-center gap-1.5 transition-all
-        ${isDragging ? 'opacity-40 shadow-none' : 'hover:border-gray-300 hover:shadow-sm'}`}
+      className={`group bg-white border border-gray-100 rounded-xl px-2 py-1.5 flex items-center gap-1.5 shadow-sm transition-all
+        ${isDragging ? 'opacity-40 shadow-none' : 'hover:border-gray-200 hover:shadow'}`}
     >
       <button
         type="button"
@@ -109,7 +115,10 @@ function DraggableBoxCard({
           )}
         </p>
         <p className="text-[10px] text-gray-400 leading-tight">
-          {box.rows}×{box.columns} · <span className={`font-medium ${getOccupancyColor(pct)}`}>{pct}%</span>
+          {box.rows}×{box.columns} ·{' '}
+          <span className={`font-medium ${overCapacity ? 'text-red-600' : getOccupancyColor(pct)}`}>
+            {overCapacity ? `${box.occupancy}/${total}` : `${pct}%`}
+          </span>
         </p>
       </button>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -158,17 +167,16 @@ function DroppableZone({
 
 // ── Draggable freezer zone section ────────────────────────────────────────────
 function FreezerZoneSection({
-  zone, boxCount, isCollapsed, onToggle, onRename, children,
+  zone, boxCount, isCollapsed, onToggle, onEdit, canEdit, children,
 }: {
   zone: FreezerZone;
   boxCount: number;
   isCollapsed: boolean;
   onToggle: () => void;
-  onRename: (name: string) => void;
+  onEdit?: () => void;
+  canEdit?: boolean;
   children: React.ReactNode;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [nameDraft, setNameDraft] = useState(zone.name);
   const { attributes, listeners, setNodeRef: dragRef, isDragging } = useDraggable({
     id: `fz_${zone.id}`,
     data: { type: 'freezerZone', zoneId: zone.id },
@@ -178,17 +186,10 @@ function FreezerZoneSection({
     data: { type: 'freezerZone', zoneId: zone.id },
   });
 
-  const commitRename = () => {
-    const trimmed = nameDraft.trim();
-    if (trimmed && trimmed !== zone.name) onRename(trimmed);
-    else setNameDraft(zone.name);
-    setEditing(false);
-  };
-
   return (
     <div
       ref={combineRefs(dragRef, dropRef)}
-      className={`bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm transition-all
+      className={`bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm transition-all
         ${isDragging ? 'opacity-50' : ''} ${isOver ? 'ring-2 ring-blue-300' : ''}`}
     >
       <div className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
@@ -203,25 +204,24 @@ function FreezerZoneSection({
             <GripVertical className="w-4 h-4" />
           </button>
           <Layers className="w-4 h-4 text-blue-500 flex-shrink-0" />
-          {editing ? (
-            <Input
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setNameDraft(zone.name); setEditing(false); } }}
-              className="h-7 text-sm border-gray-300 max-w-[200px]"
-              autoFocus
-            />
-          ) : (
-            <button type="button" onClick={() => setEditing(true)} className="text-sm font-semibold text-gray-800 truncate hover:text-blue-600 text-left">
-              {zone.name}
-            </button>
-          )}
+          <span className="text-sm font-semibold text-gray-800 truncate">{zone.name}</span>
           <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">{boxCount} caja{boxCount !== 1 ? 's' : ''}</span>
         </div>
-        <button type="button" onClick={onToggle} className="p-1 flex-shrink-0">
-          {isCollapsed ? <ChevronRight className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-        </button>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {canEdit && onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+              title="Editar zona"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          )}
+          <button type="button" onClick={onToggle} className="p-1">
+            {isCollapsed ? <ChevronRight className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+          </button>
+        </div>
       </div>
       {!isCollapsed && (
         <div className="px-4 pb-4 pt-1 space-y-3 border-t border-gray-100">
@@ -326,6 +326,9 @@ export function FreezerDetailPage() {
   const [rackError, setRackError] = useState('');
   const [moveError, setMoveError] = useState('');
   const [activeDrag, setActiveDrag] = useState<{ type: string; label: string } | null>(null);
+  const [showZoneDialog, setShowZoneDialog] = useState(false);
+  const [editZone, setEditZone] = useState<FreezerZone | null>(null);
+  const [zoneNameDraft, setZoneNameDraft] = useState('');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const collisionDetection: CollisionDetection = (args) => {
@@ -343,18 +346,41 @@ export function FreezerDetailPage() {
     enabled: !!id && !!user,
   });
 
-  const { data: freezerZones = [] } = useQuery({
-    queryKey: ['freezer-zones', id],
+  const canManageLayout = canManageFreezerLayout(user?.role);
+
+  const {
+    data: freezerZones = [],
+    isError: zonesError,
+    error: zonesQueryError,
+    isFetching: zonesFetching,
+  } = useQuery({
+    queryKey: ['freezer-zones', id, freezer?.shelf_count],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('freezer_zones') as any)
-        .select('*')
-        .eq('freezer_id', id!)
-        .order('sort_order', { ascending: true });
-      if (error) throw error;
-      return data as FreezerZone[];
+      if (!canManageLayout) {
+        return fetchFreezerZones(id!);
+      }
+      return ensureFreezerZones(id!, freezer?.shelf_count || 3);
     },
-    enabled: !!id && !!user,
+    enabled: !!id && !!user && !!freezer,
+    retry: 1,
   });
+
+  const zonesErrorMessage = zonesQueryError instanceof Error ? zonesQueryError.message : null;
+
+  const zonesLoadHelpMessage = (() => {
+    if (!zonesError && !zonesErrorMessage) return null;
+    const base = zonesErrorMessage || 'No se pudieron cargar las zonas de este congelador.';
+    if (
+      base.includes('freezer_zones') ||
+      base.includes('does not exist') ||
+      base.includes('row-level security') ||
+      base.includes('violates') ||
+      base.includes('permiso')
+    ) {
+      return `${base} Aplica en Supabase las migraciones 013 (freezer_zones RLS) y 014 (borrado de racks).`;
+    }
+    return `${base} Si el problema continúa, aplica las migraciones 013 y 014 en Supabase.`;
+  })();
 
   const { data: racks = [] } = useQuery({
     queryKey: ['racks', id],
@@ -410,24 +436,6 @@ export function FreezerDetailPage() {
     if (error) throw error;
     const { data } = supabase.storage.from('cryo-images').getPublicUrl(path);
     return data.publicUrl;
-  }
-
-  async function syncRackZones(rackId: string, shelfCount: number) {
-    const { data: existing } = await (supabase.from('rack_zones') as any).select('*').eq('rack_id', rackId);
-    const existingNums = new Set((existing || []).map((z: RackZone) => z.zone_number));
-    for (let n = 1; n <= shelfCount; n++) {
-      if (!existingNums.has(n)) {
-        const { error } = await (supabase.from('rack_zones') as any).insert([{
-          rack_id: rackId, zone_number: n, name: `Zona ${n}`, sort_order: n,
-        }]);
-        if (error) throw error;
-      }
-    }
-    const { error: deleteError } = await (supabase.from('rack_zones') as any)
-      .delete()
-      .eq('rack_id', rackId)
-      .gt('zone_number', shelfCount);
-    if (deleteError) throw deleteError;
   }
 
   const saveMutation = useMutation({
@@ -506,6 +514,67 @@ export function FreezerDetailPage() {
     onError: (e: any) => setMoveError(e.message),
   });
 
+  const addFreezerZoneMutation = useMutation({
+    mutationFn: async () => {
+      if (!canManageLayout) {
+        throw new Error('Tu rol no permite gestionar zonas del congelador.');
+      }
+      const targetCount = freezerZones.length === 0
+        ? (freezer?.shelf_count || 3)
+        : freezerZones.length + 1;
+      if (targetCount > 20) throw new Error('Máximo 20 zonas por congelador.');
+      await syncFreezerZones(id!, targetCount);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['freezer-zones', id] });
+      queryClient.invalidateQueries({ queryKey: ['freezer', id] });
+    },
+    onError: (e: Error) => setMoveError(e.message),
+  });
+
+  const deleteFreezerZoneMutation = useMutation({
+    mutationFn: async ({ zoneId, zoneNumber }: { zoneId: string; zoneNumber: number }) => {
+      if (!canManageLayout) throw new Error('Tu rol no permite gestionar zonas.');
+      await deleteFreezerZone(id!, zoneId, zoneNumber, freezerZones.length);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['freezer-zones', id] });
+      queryClient.invalidateQueries({ queryKey: ['freezer', id] });
+      queryClient.invalidateQueries({ queryKey: ['racks', id] });
+      queryClient.invalidateQueries({ queryKey: ['rack-zones', id] });
+      queryClient.invalidateQueries({ queryKey: ['boxes', id] });
+    },
+    onError: (e: Error) => setMoveError(e.message),
+  });
+
+  const deleteRackMutation = useMutation({
+    mutationFn: async (rackId: string) => {
+      if (!canManageLayout) throw new Error('Tu rol no permite eliminar racks.');
+      await deleteRack(rackId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['racks', id] });
+      queryClient.invalidateQueries({ queryKey: ['rack-zones', id] });
+      queryClient.invalidateQueries({ queryKey: ['boxes', id] });
+    },
+    onError: (e: Error) => setMoveError(e.message),
+  });
+
+  const backfillZonesMutation = useMutation({
+    mutationFn: async () => {
+      if (!canManageLayout) {
+        throw new Error('Tu rol no permite gestionar zonas del congelador.');
+      }
+      const count = freezer?.shelf_count || 3;
+      await syncFreezerZones(id!, count);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['freezer-zones', id] });
+      queryClient.invalidateQueries({ queryKey: ['freezer', id] });
+    },
+    onError: (e: Error) => setMoveError(e.message),
+  });
+
   const renameFreezerZoneMutation = useMutation({
     mutationFn: async ({ zoneId, name }: { zoneId: string; name: string }) => {
       const { error } = await (supabase.from('freezer_zones') as any)
@@ -557,6 +626,9 @@ export function FreezerDetailPage() {
 
   const saveRackMutation = useMutation({
     mutationFn: async () => {
+      if (!canManageLayout) {
+        throw new Error('Tu rol no permite añadir o editar racks.');
+      }
       const shelfNumber = parseInt(rackForm.shelf_number) || 1;
       const shelfCount = Math.max(parseInt(rackForm.shelf_count) || 1, 1);
       const slotsPerShelf = Math.max(parseInt(rackForm.slots_per_shelf) || 5, 1);
@@ -693,6 +765,23 @@ export function FreezerDetailPage() {
     setRackImagePreview(null);
     setRackError('');
   };
+  const openEditZone = (zone: FreezerZone) => {
+    setEditZone(zone);
+    setZoneNameDraft(zone.name);
+    setShowZoneDialog(true);
+  };
+  const closeZoneDialog = () => {
+    setShowZoneDialog(false);
+    setEditZone(null);
+    setZoneNameDraft('');
+  };
+  const saveZoneFromDialog = () => {
+    if (!editZone || !zoneNameDraft.trim()) return;
+    if (zoneNameDraft.trim() !== editZone.name) {
+      renameFreezerZoneMutation.mutate({ zoneId: editZone.id, name: zoneNameDraft.trim() });
+    }
+    closeZoneDialog();
+  };
   const handleRackImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -704,6 +793,11 @@ export function FreezerDetailPage() {
 
   const sortedFreezerZones = [...freezerZones].sort((a, b) => a.sort_order - b.sort_order);
   const zoneCount = sortedFreezerZones.length || freezer?.shelf_count || 3;
+  const zoneNumbersInUi = new Set(sortedFreezerZones.map((z) => z.zone_number));
+  const racksWithoutZoneUi =
+    sortedFreezerZones.length === 0
+      ? racks
+      : racks.filter((r) => r.shelf_number == null || !zoneNumbersInUi.has(r.shelf_number));
   const unassigned = boxes.filter((b) => !b.shelf_number);
   const getRacksForZone = (zoneNumber: number) => racks.filter((r) => r.shelf_number === zoneNumber);
   const getBoxesForZoneDirect = (zoneNumber: number) => boxes.filter((b) => b.shelf_number === zoneNumber && !b.rack_id);
@@ -775,6 +869,50 @@ export function FreezerDetailPage() {
     </div>
   );
 
+  const countBoxesInFreezerZone = (zoneNumber: number) => {
+    const zoneRacks = racks.filter((r) => r.shelf_number === zoneNumber);
+    const rackIds = new Set(zoneRacks.map((r) => r.id));
+    return boxes.filter(
+      (b) => (b.shelf_number === zoneNumber && !b.rack_id) || (b.rack_id != null && rackIds.has(b.rack_id)),
+    ).length;
+  };
+
+  const handleDeleteFreezerZone = (zone: FreezerZone) => {
+    if (sortedFreezerZones.length <= 1) {
+      alert('Debe quedar al menos una zona en el congelador.');
+      return;
+    }
+    const zoneRacks = racks.filter((r) => r.shelf_number === zone.zone_number);
+    const boxCount = countBoxesInFreezerZone(zone.zone_number);
+    const rackPart = zoneRacks.length > 0 ? ` y se eliminarán ${zoneRacks.length} rack(s)` : '';
+    if (!confirm(
+      `Se quitarán ${boxCount} caja(s) de su zona (irán a Sin zona asignada)${rackPart}. ¿Continuar?`,
+    )) return;
+    deleteFreezerZoneMutation.mutate({ zoneId: zone.id, zoneNumber: zone.zone_number });
+  };
+
+  const handleDeleteRack = (rack: Rack) => {
+    const boxCount = boxes.filter((b) => b.rack_id === rack.id).length;
+    if (!confirm(
+      `Se quitarán ${boxCount} caja(s) de este rack (irán a Sin zona asignada) y se eliminará el rack «${rack.name}». ¿Continuar?`,
+    )) return;
+    deleteRackMutation.mutate(rack.id);
+  };
+
+  const deleteZoneFromDialog = () => {
+    if (!editZone) return;
+    const zone = editZone;
+    closeZoneDialog();
+    handleDeleteFreezerZone(zone);
+  };
+
+  const deleteRackFromDialog = () => {
+    if (!editRack) return;
+    const rack = editRack;
+    closeRackDialog();
+    handleDeleteRack(rack);
+  };
+
   const renderRack = (rack: Rack, zoneNumber: number) => {
     const zones = getRackZonesForRack(rack.id);
     const slotsPerShelf = rack.slots_per_shelf || rack.slot_count || rack.columns || 5;
@@ -798,14 +936,18 @@ export function FreezerDetailPage() {
               {rack.description && <p className="text-[10px] text-gray-400 truncate">{rack.description}</p>}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => openEditRack(rack)}
-            className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
-            title="Editar rack"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {canManageLayout && (
+              <button
+                type="button"
+                onClick={() => openEditRack(rack)}
+                className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                title="Editar rack"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {!hasMultipleZones ? (
@@ -815,7 +957,7 @@ export function FreezerDetailPage() {
             className="ml-4 min-h-[2.5rem]"
           >
             {rackBoxes.length === 0 ? (
-              <div className="h-10 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
+              <div className="h-10 border border-dashed border-gray-100 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
                 Arrastra una caja aquí
               </div>
             ) : renderBoxGrid(rackBoxes)}
@@ -838,7 +980,7 @@ export function FreezerDetailPage() {
                     data={{ type: 'rackShelf', shelfNumber: zoneNumber, rackId: rack.id, rackShelfNumber: rz.zone_number }}
                   >
                     {rzBoxes.length === 0 ? (
-                      <div className="h-10 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
+                      <div className="h-10 border border-dashed border-gray-100 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
                         Arrastra una caja aquí
                       </div>
                     ) : renderBoxGrid(rzBoxes)}
@@ -878,8 +1020,25 @@ export function FreezerDetailPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={openCreateRack} className="border-gray-300 text-gray-700 hover:bg-gray-50">
+              <div className="flex items-center gap-2 flex-wrap">
+                {canManageLayout && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => addFreezerZoneMutation.mutate()}
+                      disabled={addFreezerZoneMutation.isPending || zonesFetching || zoneCount >= 20}
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      <Plus className="w-4 h-4" /> {sortedFreezerZones.length === 0 ? 'Crear zonas' : 'Añadir zona'}
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={openCreateRack}
+                  disabled={!canManageLayout || sortedFreezerZones.length === 0}
+                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
                   <Package className="w-4 h-4" /> Añadir rack
                 </Button>
                 <Button onClick={openCreate} className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white">
@@ -899,12 +1058,50 @@ export function FreezerDetailPage() {
             </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-              {moveError && (
+              {(moveError || zonesLoadHelpMessage) && (
                 <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {moveError}
+                  {moveError || zonesLoadHelpMessage}
                 </div>
               )}
+              {!canManageLayout && (
+                <div className="mb-4 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  Tu rol es solo lectura: puedes ver el congelador pero no crear, eliminar zonas ni racks.
+                </div>
+              )}
+              {canManageLayout && racks.length > 0 && sortedFreezerZones.length === 0 && (
+                <div className="mb-4 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Hay {racks.length} rack{racks.length !== 1 ? 's' : ''} en este congelador pero las zonas no cargaron.
+                  Edita cada rack con el lápiz para eliminarlo.
+                  Si no ves zonas, pulsa «Crear zonas por defecto» o aplica las migraciones 013 y 014 en Supabase.
+                </div>
+              )}
+              {canManageLayout && (sortedFreezerZones.length > 0 || racks.length > 0) && (
+                <p className="mb-3 text-xs text-gray-500">
+                  Para editar o eliminar una zona o rack, pulsa el icono del lápiz en su cabecera.
+                </p>
+              )}
               <div className="space-y-3">
+                {sortedFreezerZones.length === 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <p className="text-sm text-amber-900">
+                      {zonesLoadHelpMessage
+                        ? zonesLoadHelpMessage
+                        : zonesError
+                          ? 'No se pudieron cargar las zonas de este congelador. Aplica las migraciones 013 y 014 en Supabase.'
+                          : 'Este congelador no tiene zonas. Crea zonas para asignar racks y cajas.'}
+                    </p>
+                    {canManageLayout && (
+                      <Button
+                        variant="outline"
+                        onClick={() => backfillZonesMutation.mutate()}
+                        disabled={backfillZonesMutation.isPending || zonesFetching}
+                        className="border-amber-300 text-amber-900 hover:bg-amber-100 shrink-0"
+                      >
+                        {backfillZonesMutation.isPending || zonesFetching ? 'Creando...' : 'Crear zonas por defecto'}
+                      </Button>
+                    )}
+                  </div>
+                )}
                 {sortedFreezerZones.map((zone) => {
                   const zoneNumber = zone.zone_number;
                   const zoneRacks = getRacksForZone(zoneNumber);
@@ -918,7 +1115,8 @@ export function FreezerDetailPage() {
                       boxCount={totalOnZone}
                       isCollapsed={!!collapsedZones[zone.id]}
                       onToggle={() => toggleZone(zone.id)}
-                      onRename={(name) => renameFreezerZoneMutation.mutate({ zoneId: zone.id, name })}
+                      canEdit={canManageLayout}
+                      onEdit={() => openEditZone(zone)}
                     >
                       {zoneRacks.map((rack) => renderRack(rack, zoneNumber))}
                       <div className="space-y-1">
@@ -929,7 +1127,7 @@ export function FreezerDetailPage() {
                           className="min-h-[2rem]"
                         >
                           {directBoxes.length === 0 ? (
-                            <div className="h-10 border-2 border-dashed border-gray-100 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
+                            <div className="h-10 border border-dashed border-gray-100 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
                               {zoneRacks.length === 0 ? 'Sin cajas — arrastra aquí' : 'Sin cajas directas'}
                             </div>
                           ) : renderBoxGrid(directBoxes)}
@@ -938,6 +1136,28 @@ export function FreezerDetailPage() {
                     </FreezerZoneSection>
                   );
                 })}
+
+                {racksWithoutZoneUi.length > 0 && (
+                  <div className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-4 py-3 border-b border-amber-100 bg-amber-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div>
+                        <span className="text-sm font-medium text-amber-900">
+                          Racks {sortedFreezerZones.length === 0 ? '(zonas no cargadas)' : '(sin zona en pantalla)'}
+                        </span>
+                        <p className="text-xs text-amber-800 mt-0.5">
+                          {sortedFreezerZones.length === 0
+                            ? 'Las zonas no están disponibles; edita cada rack con el lápiz para eliminarlo.'
+                            : 'Estos racks no coinciden con ninguna zona visible.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      {racksWithoutZoneUi.map((rack) =>
+                        renderRack(rack, rack.shelf_number ?? 1),
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <DroppableZone
                   droppableId="unassigned"
@@ -950,7 +1170,7 @@ export function FreezerDetailPage() {
                     </div>
                     {unassigned.length === 0 ? (
                       <div className="p-3">
-                        <div className="h-10 border-2 border-dashed border-gray-100 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
+                        <div className="h-10 border border-dashed border-gray-100 rounded-lg flex items-center justify-center text-[10px] text-gray-300">
                           Arrastra una caja aquí para quitarla de su zona
                         </div>
                       </div>
@@ -1078,6 +1298,11 @@ export function FreezerDetailPage() {
           <DialogHeader><DialogTitle>{editRack ? 'Editar rack' : 'Añadir rack'}</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             {rackError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{rackError}</p>}
+            {sortedFreezerZones.length === 0 && (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                Crea al menos una zona en el congelador antes de añadir un rack.
+              </p>
+            )}
             <div className="space-y-1">
               <label className="text-sm font-medium text-gray-700">Nombre *</label>
               <Input value={rackForm.name} onChange={(e) => setRackForm({ ...rackForm, name: e.target.value })} placeholder="Rack R1" className="border-gray-300" autoFocus />
@@ -1117,10 +1342,25 @@ export function FreezerDetailPage() {
                 </button>
               </div>
             </div>
+            {editRack && (
+              <div className="pt-3 border-t border-gray-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={deleteRackFromDialog}
+                  disabled={deleteRackMutation.isPending}
+                  className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {deleteRackMutation.isPending ? 'Eliminando...' : 'Eliminar rack'}
+                </Button>
+                <p className="text-xs text-gray-500 mt-1.5">Las cajas pasarán a «Sin zona asignada».</p>
+              </div>
+            )}
             <div className="flex gap-3 pt-1">
               <Button variant="outline" onClick={closeRackDialog} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
               <Button
-                disabled={saveRackMutation.isPending || !rackForm.name.trim()}
+                disabled={saveRackMutation.isPending || !canManageLayout || !rackForm.name.trim() || sortedFreezerZones.length === 0}
                 onClick={() => { if (!rackForm.name.trim()) return setRackError('El nombre es obligatorio'); saveRackMutation.mutate(); }}
                 className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
               >
@@ -1130,6 +1370,58 @@ export function FreezerDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showZoneDialog} onOpenChange={(open) => { if (!open) closeZoneDialog(); }}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar zona</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Nombre</label>
+              <Input
+                value={zoneNameDraft}
+                onChange={(e) => setZoneNameDraft(e.target.value)}
+                className="border-gray-300"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={closeZoneDialog} className="flex-1 border-gray-300">
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={saveZoneFromDialog}
+                disabled={!zoneNameDraft.trim() || renameFreezerZoneMutation.isPending}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+              >
+                Guardar
+              </Button>
+            </div>
+            {sortedFreezerZones.length > 1 ? (
+              <div className="pt-3 border-t border-gray-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={deleteZoneFromDialog}
+                  disabled={deleteFreezerZoneMutation.isPending}
+                  className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {deleteFreezerZoneMutation.isPending ? 'Eliminando...' : 'Eliminar zona'}
+                </Button>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Las cajas irán a «Sin zona asignada» y se borrarán los racks de esta zona.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">No se puede eliminar la única zona del congelador.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </AppLayout>
   );
 }

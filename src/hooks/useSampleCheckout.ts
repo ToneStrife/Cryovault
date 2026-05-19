@@ -70,6 +70,56 @@ async function performCheckoutSample(s: Sample, userId: string) {
   return { newThaws, maxThaws: s.max_thaws };
 }
 
+async function performMoveSample(
+  sample: Sample,
+  toRow: number,
+  toCol: number,
+  userId: string,
+) {
+  if (sample.status !== 'active') {
+    throw new Error('Solo se pueden mover muestras activas');
+  }
+  if (!sample.box_id) {
+    throw new Error('La muestra no está en una caja');
+  }
+  if (sample.position_row === toRow && sample.position_column === toCol) {
+    return;
+  }
+
+  const { data: occupant, error: checkErr } = await (supabase.from('samples') as any)
+    .select('id')
+    .eq('box_id', sample.box_id)
+    .eq('position_row', toRow)
+    .eq('position_column', toCol)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (checkErr) throw checkErr;
+  if (occupant && occupant.id !== sample.id) {
+    throw new Error('Celda ocupada');
+  }
+
+  const label = positionLabel(toRow, toCol);
+  const { error } = await (supabase.from('samples') as any)
+    .update({
+      position_row: toRow,
+      position_column: toCol,
+      position_label: label,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', sample.id);
+  if (error) throw error;
+
+  await logMovement({
+    sampleId: sample.id,
+    fromBoxId: sample.box_id,
+    toBoxId: sample.box_id,
+    fromPosition: sample.position_label,
+    toPosition: label,
+    movedBy: userId,
+    notes: 'move_position',
+  });
+}
+
 export function useSampleCheckout() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -238,6 +288,22 @@ export function useSampleCheckout() {
     },
   });
 
+  const moveSampleMutation = useMutation({
+    mutationFn: async ({
+      sample,
+      row,
+      col,
+    }: {
+      sample: Sample;
+      row: number;
+      col: number;
+    }) => {
+      if (!user) throw new Error('No autenticado');
+      await performMoveSample(sample, row, col, user.id);
+    },
+    onSuccess: () => invalidateAll(),
+  });
+
   const returnBoxMutation = useMutation({
     mutationFn: async (boxId: string) => {
       if (!user) throw new Error('No autenticado');
@@ -275,5 +341,8 @@ export function useSampleCheckout() {
     isCheckingOutBox: checkoutBoxMutation.isPending,
     returnBox: returnBoxMutation.mutate,
     isReturningBox: returnBoxMutation.isPending,
+    moveSample: moveSampleMutation.mutate,
+    moveSampleAsync: moveSampleMutation.mutateAsync,
+    isMovingSample: moveSampleMutation.isPending,
   };
 }

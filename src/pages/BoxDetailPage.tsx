@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
@@ -15,24 +15,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
+import { X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
 import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  pointerWithin,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { CollisionDetection, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useSampleCheckout } from '@/hooks/useSampleCheckout';
 import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
+import { BoxGridCell, BoxGridCellStatic } from '@/components/box/BoxGridCell';
 import { positionLabel } from '@/lib/positionUtils';
+import type { BoxCellDropData, BoxSampleDragData } from '@/lib/boxGridDnd';
 
 import type { Box, Sample, SampleType, SampleStatus, UnitType, Rack } from '@/types';
 
-const CELL_BG: Record<string, string> = {
-  empty: 'bg-white hover:bg-gray-50 border-gray-200',
-  active: 'bg-green-500 hover:bg-green-600 border-green-500 cursor-pointer',
-  used: 'bg-yellow-400 hover:bg-yellow-500 border-yellow-400 cursor-pointer',
-  discarded: 'bg-red-500 hover:bg-red-600 border-red-500 cursor-pointer',
-  archived: 'bg-gray-400 hover:bg-gray-500 border-gray-400 cursor-pointer',
-  contaminated: 'bg-red-900 hover:bg-red-800 border-red-900 cursor-pointer',
-};
-
-// Print-area hex colors for canvas export (matching CELL_BG)
+// Print-area hex colors for canvas export
 const CELL_HEX: Record<string, { bg: string; text: string }> = {
   empty: { bg: '#f9fafb', text: '#d1d5db' },
   active: { bg: '#22c55e', text: '#ffffff' },
@@ -217,6 +220,7 @@ export function BoxDetailPage() {
     returnBox,
     isCheckingOutBox,
     isReturningBox,
+    moveSampleAsync,
   } = useSampleCheckout();
   const sampleTypes = settingsOptions.sampleTypes;
   const statuses = settingsOptions.sampleStatuses;
@@ -249,6 +253,19 @@ export function BoxDetailPage() {
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [showReturnDialog, setShowReturnDialog] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
+  const [activeDragSample, setActiveDragSample] = useState<Sample | null>(null);
+  const [gridInteractionLocked, setGridInteractionLocked] = useState(false);
+  const gridInteractionUnlockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const gridSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const gridCollisionDetection: CollisionDetection = useCallback((args) => {
+    const pointerCollisions = pointerWithin(args);
+    return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
+  }, []);
+
+  useEffect(() => () => {
+    if (gridInteractionUnlockRef.current) clearTimeout(gridInteractionUnlockRef.current);
+  }, []);
   const [bulkApply, setBulkApply] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState<SampleFormData>(emptyForm);
   const [formError, setFormError] = useState('');
@@ -341,6 +358,13 @@ export function BoxDetailPage() {
     });
     return m;
   }, [samples]);
+
+  const getSampleCellClass = useCallback((sample: Sample) => {
+    if (sample.status === 'in_use') {
+      return 'bg-amber-400 hover:bg-amber-500 border-amber-500 text-amber-950 cursor-pointer';
+    }
+    return typeCellClass(sample.sample_type, sampleTypes);
+  }, [sampleTypes]);
 
   // Build full-box spreadsheet rows: every position, overlay samples
   const buildSheetRows = useCallback((boxData: Box, sampleList: Sample[]): SpreadsheetRow[] => {
@@ -947,7 +971,9 @@ export function BoxDetailPage() {
   const rows = box.rows;
   const cols = box.columns;
   const total = rows * cols;
-  const pct = total > 0 ? Math.round((box.occupancy / total) * 100) : 0;
+  const pctRaw = total > 0 ? Math.round((box.occupancy / total) * 100) : 0;
+  const pct = Math.min(100, pctRaw);
+  const overCapacity = total > 0 && box.occupancy > total;
   const dirtyCount = sheetRows.filter((r) => r._dirty || (r._new && r.sample_code.trim())).length;
   const sortedSamples = [...samples].sort((a, b) => {
     if (!a.position_label && !b.position_label) return a.sample_code.localeCompare(b.sample_code);
@@ -964,6 +990,43 @@ export function BoxDetailPage() {
   const selectedBoxIds = selectedIds.filter((id) => sortedSampleIdSet.has(id));
   const allBoxSamplesSelected = sortedSamples.length > 0 && selectedBoxIds.length === sortedSamples.length;
   const selectAllBoxSamples = () => setSelected(new Set(sortedSampleIds));
+
+  const handleGridDragStart = (e: DragStartEvent) => {
+    setGridInteractionLocked(true);
+    const data = e.active.data.current as BoxSampleDragData | undefined;
+    if (data?.type === 'sample') {
+      const s = samples.find((x) => x.id === data.sampleId);
+      if (s) setActiveDragSample(s);
+    }
+  };
+
+  const handleGridDragEnd = async (e: DragEndEvent) => {
+    setActiveDragSample(null);
+    if (gridInteractionUnlockRef.current) clearTimeout(gridInteractionUnlockRef.current);
+    gridInteractionUnlockRef.current = setTimeout(() => setGridInteractionLocked(false), 100);
+
+    const { active, over } = e;
+    if (!over) return;
+
+    const activeData = active.data.current as BoxSampleDragData | undefined;
+    const overData = over.data.current as BoxCellDropData | undefined;
+    if (activeData?.type !== 'sample' || overData?.type !== 'cell') return;
+    if (activeData.row === overData.row && activeData.col === overData.col) return;
+    if (sampleMap[`${overData.row}_${overData.col}`]) {
+      alert('Celda ocupada');
+      return;
+    }
+
+    const sample = samples.find((s) => s.id === activeData.sampleId);
+    if (!sample) return;
+
+    try {
+      await moveSampleAsync({ sample, row: overData.row, col: overData.col });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al mover la muestra';
+      if (msg !== 'Celda ocupada') alert(msg);
+    }
+  };
 
   const handleBulkCheckout = async () => {
     const targets = samples.filter(
@@ -1036,7 +1099,18 @@ export function BoxDetailPage() {
                 <button onClick={openEditBox} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"><Pencil className="w-4 h-4" /></button>
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${boxInUse ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>{STATUS_LABEL[box.status] || box.status}</span>
               </div>
-              <p className="text-sm text-gray-500 mt-1">Cuadrícula {rows}×{cols} &middot; <span className="font-semibold text-gray-700">{box.occupancy}</span>/{total} muestras ({pct}%)</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Cuadrícula {rows}×{cols} &middot;{' '}
+                <span className={`font-semibold ${overCapacity ? 'text-red-600' : 'text-gray-700'}`}>
+                  {box.occupancy}/{total}
+                </span>{' '}
+                celdas ocupadas ({pct}%)
+              </p>
+              {overCapacity && (
+                <p className="text-xs text-amber-700 mt-1">
+                  Hay más muestras posicionadas que celdas válidas (duplicados o fuera de cuadrícula). Revisa la cuadrícula o aplica la migración de ocupación.
+                </p>
+              )}
               {box.description && <p className="text-xs text-gray-400 mt-0.5">{box.description}</p>}
             </div>
 
@@ -1113,6 +1187,12 @@ export function BoxDetailPage() {
                   </div>
                 </div>
 
+                <DndContext
+                  sensors={gridSensors}
+                  collisionDetection={gridCollisionDetection}
+                  onDragStart={boxInUse ? () => {} : handleGridDragStart}
+                  onDragEnd={boxInUse ? () => {} : handleGridDragEnd}
+                >
                 <div className="overflow-auto">
                   <div className="inline-block">
                     {/* Column headers */}
@@ -1125,27 +1205,37 @@ export function BoxDetailPage() {
                       <div key={r} className="flex items-center gap-1 mb-1">
                         <div className="w-9 h-14 flex items-center justify-center text-xs text-gray-400 font-mono flex-shrink-0">{String.fromCharCode(65 + r)}</div>
                         {Array.from({ length: cols }, (_, c) => {
-                          const sample = sampleMap[`${r + 1}_${c + 1}`];
-                          const label = positionLabel(r + 1, c + 1);
+                          const rowNum = r + 1;
+                          const colNum = c + 1;
+                          const cellSample = sampleMap[`${rowNum}_${colNum}`];
+                          const Cell = boxInUse ? BoxGridCellStatic : BoxGridCell;
                           return (
-                            <button
+                            <Cell
                               key={c}
-                              onClick={() => handleCellClick(r + 1, c + 1)}
-                              title={sample ? `${sample.sample_code} | ${sample.sample_type} | ${sample.status}` : `${label} — vacío`}
-                              className={`w-16 h-16 rounded border font-mono transition-all flex flex-col items-center justify-center gap-0.5 overflow-hidden ${sample ? (sample.status === 'in_use' ? 'bg-amber-400 hover:bg-amber-500 border-amber-500 text-amber-950 cursor-pointer' : typeCellClass(sample.sample_type, sampleTypes)) : CELL_BG.empty}`}
-                            >
-                              {sample ? (
-                                <span className="text-[11px] font-bold leading-tight px-1 text-center break-all">{sample.sample_code}</span>
-                              ) : (
-                                <Plus className="w-4 h-4 text-gray-200" />
-                              )}
-                            </button>
+                              row={rowNum}
+                              col={colNum}
+                              sample={cellSample}
+                              positionLabelText={positionLabel(rowNum, colNum)}
+                              interactionLocked={boxInUse ? undefined : gridInteractionLocked}
+                              getSampleCellClass={getSampleCellClass}
+                              onCellClick={handleCellClick}
+                            />
                           );
                         })}
                       </div>
                     ))}
                   </div>
                 </div>
+                {!boxInUse && (
+                  <DragOverlay dropAnimation={null}>
+                    {activeDragSample ? (
+                      <div className="w-16 h-16 rounded border border-blue-500 bg-blue-600 text-white font-mono text-[11px] font-bold flex items-center justify-center shadow-lg px-1 text-center">
+                        {activeDragSample.sample_code}
+                      </div>
+                    ) : null}
+                  </DragOverlay>
+                )}
+                </DndContext>
 
                 {/* Legend */}
                 <div className="flex items-center gap-5 mt-5 flex-wrap border-t border-gray-100 pt-4">
@@ -1160,6 +1250,11 @@ export function BoxDetailPage() {
                   <span className="flex items-center gap-1.5 text-xs text-gray-500">
                     <span className="w-3 h-3 rounded bg-amber-400" /> En uso (fuera de celda)
                   </span>
+                  {!boxInUse && (
+                    <span className="text-xs text-gray-400 w-full sm:w-auto">
+                      Arrastra una muestra a una celda vacía para cambiar su posición.
+                    </span>
+                  )}
                 </div>
               </div>
 

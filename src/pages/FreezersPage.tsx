@@ -2,6 +2,8 @@ import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { syncFreezerZones } from '@/lib/freezerZones';
+import { syncRackZones } from '@/lib/rackZones';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -107,15 +109,18 @@ export function FreezersPage() {
         laboratory: user!.laboratory, created_by: user!.id,
         shelf_count: parseInt(data.shelf_count) || 3,
       };
+      const zoneCount = basePayload.shelf_count;
       if (editTarget) {
         let imageUrl = editTarget.image_url;
         if (imageFile) imageUrl = await uploadImage(editTarget.id);
         const { error } = await (supabase.from('freezers') as any).update({ ...basePayload, image_url: imageUrl }).eq('id', editTarget.id);
         if (error) throw error;
+        await syncFreezerZones(editTarget.id, zoneCount);
       } else {
         const { data: inserted, error } = await (supabase.from('freezers') as any).insert([{ ...basePayload, image_url: null }]).select('id').single();
         if (error) throw error;
         const freezerId = inserted.id;
+        await syncFreezerZones(freezerId, zoneCount);
         if (imageFile) {
           const imageUrl = await uploadImage(freezerId);
           await (supabase.from('freezers') as any).update({ image_url: imageUrl }).eq('id', freezerId);
@@ -124,13 +129,29 @@ export function FreezersPage() {
         shelves.forEach((shelf, shelfIdx) => {
           shelf.racks.forEach((rack) => {
             if (rack.name.trim()) {
-              rackInserts.push({ freezer_id: freezerId, name: rack.name.trim(), shelf_number: shelfIdx + 1, rows: 1, columns: parseInt(rack.slot_count) || 5, slot_count: parseInt(rack.slot_count) || 5, created_by: user!.id });
+              const slots = parseInt(rack.slot_count) || 5;
+              rackInserts.push({
+                freezer_id: freezerId,
+                name: rack.name.trim(),
+                shelf_number: shelfIdx + 1,
+                rows: 1,
+                columns: slots,
+                slot_count: slots,
+                shelf_count: 1,
+                slots_per_shelf: slots,
+                created_by: user!.id,
+              });
             }
           });
         });
         if (rackInserts.length > 0) {
-          const { error: rErr } = await (supabase.from('racks') as any).insert(rackInserts);
+          const { data: insertedRacks, error: rErr } = await (supabase.from('racks') as any)
+            .insert(rackInserts)
+            .select('id');
           if (rErr) throw rErr;
+          for (const rack of insertedRacks || []) {
+            await syncRackZones(rack.id, 1);
+          }
         }
       }
     },

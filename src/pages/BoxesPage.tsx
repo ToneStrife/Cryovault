@@ -422,7 +422,7 @@ export function BoxesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtered.map((box) => {
                 const total = box.rows * box.columns;
-                const pct = total > 0 ? Math.round((box.occupancy / total) * 100) : 0;
+                const pct = total > 0 ? Math.min(100, Math.round((box.occupancy / total) * 100)) : 0;
                 return (
                   <div
                     key={box.id}
@@ -496,7 +496,7 @@ export function BoxesPage() {
                 <tbody>
                   {filtered.map((box) => {
                     const total = box.rows * box.columns;
-                    const pct = total > 0 ? Math.round((box.occupancy / total) * 100) : 0;
+                    const pct = total > 0 ? Math.min(100, Math.round((box.occupancy / total) * 100)) : 0;
                     const isEditing = editingBoxId === box.id;
                     return (
                       <tr key={box.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
