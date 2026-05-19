@@ -20,6 +20,7 @@ import {
   labelOption,
 } from '@/lib/settingsOptions';
 import { PAGE_HEADER, PAGE_BODY } from '@/lib/layout';
+import { LabDataSection } from '@/components/settings/LabDataSection';
 import type { Settings } from '@/types';
 
 type OptionListKey = 'sample_types' | 'sample_statuses' | 'box_types' | 'box_statuses' | 'unit_types';
@@ -415,6 +416,8 @@ export function SettingsPage() {
                 />
               </div>
             </div>
+
+            {canEdit && <LabDataSection settingsId={settings?.id} />}
 
             {canEdit && (
               <div className="flex items-center gap-3">

@@ -39,6 +39,7 @@ import {
 } from '@/lib/formStyles';
 import { Textarea } from '@/components/ui/textarea';
 import { canManageBoxes } from '@/lib/labPermissions';
+import { logDataOperation } from '@/lib/labAudit';
 import { archiveBox, unarchiveBox, softDeleteBoxWithSamples, getBoxSampleCounts } from '@/lib/boxLifecycle';
 import { BoxDeleteConfirmDialog } from '@/components/box/BoxDeleteConfirmDialog';
 import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
@@ -957,6 +958,9 @@ export function BoxDetailPage() {
     XLSX.utils.book_append_sheet(wb, ws, 'Muestras');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     triggerBlobDownload(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${box.name}-muestras.xlsx`);
+    if (user?.id && boxId) {
+      void logDataOperation(user.id, 'box', boxId, 'box_export', { sample_count: samples.length });
+    }
   };
 
   const handleDownloadTemplate = () => {
@@ -1028,6 +1032,9 @@ export function BoxDetailPage() {
     setImportResult({ imported, errors });
     setImportLoading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (user?.id && boxId && imported > 0) {
+      void logDataOperation(user.id, 'box', boxId, 'box_import', { imported, error_count: errors.length });
+    }
   };
 
   // --- Print ---
@@ -1264,6 +1271,11 @@ export function BoxDetailPage() {
                   <DropdownMenuItem onClick={handleExportXLSX} disabled={samples.length === 0}>
                     <Download className="w-4 h-4 mr-2" /> Exportar Excel
                   </DropdownMenuItem>
+                  {canManage && !box.deleted_at && !boxInUse && (
+                    <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
+                      <Upload className="w-4 h-4 mr-2" /> Importar
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={handlePrint}>
                     <Printer className="w-4 h-4 mr-2" /> Imprimir
                   </DropdownMenuItem>
@@ -1324,7 +1336,10 @@ export function BoxDetailPage() {
                 <UserPlus className="w-4 h-4" /> Asignar muestra
               </Button>
               <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
-                <button onClick={handleExportXLSX} disabled={samples.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"><Download className="w-4 h-4" /> Excel</button>
+                <button onClick={handleExportXLSX} disabled={samples.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 border-r border-gray-300"><Download className="w-4 h-4" /> Excel</button>
+                {canManage && !box.deleted_at && !boxInUse && (
+                  <button onClick={() => setShowImportDialog(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"><Upload className="w-4 h-4" /> Importar</button>
+                )}
               </div>
               {canManage && !box.deleted_at && (
                 <>
@@ -2091,7 +2106,7 @@ export function BoxDetailPage() {
 
       {/* ── IMPORT DIALOG ── */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`bg-white border-gray-200 text-gray-900 rounded-2xl shadow-2xl ${DIALOG_MOBILE} sm:max-w-2xl max-h-[90vh] overflow-y-auto`}>
           <DialogHeader><DialogTitle className="text-gray-900">Importar muestras</DialogTitle></DialogHeader>
           <div className="flex border-b border-gray-200 mt-2">
             <button onClick={() => setImportTab('upload')} className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${importTab === 'upload' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Cargar archivo</button>
