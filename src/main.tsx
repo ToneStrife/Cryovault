@@ -6,8 +6,11 @@ import App from './App';
 import './index.css';
 import { AuthProvider } from './context/AuthContext';
 import { restoreSpaRedirect } from './lib/spaRedirect';
+import { registerSW } from 'virtual:pwa-register';
 
 restoreSpaRedirect();
+
+registerSW({ immediate: true });
 
 const queryClient = new QueryClient();
 

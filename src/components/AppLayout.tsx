@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { LayoutGrid, Search, ChartBar as BarChart3, Settings, Users, LogOut, Menu, X, Snowflake, Package2, ChevronLeft, ChevronRight, UserCircle } from 'lucide-react';
+import { CryoVaultLogo } from '@/components/brand/CryoVaultLogo';
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -26,33 +28,6 @@ function getActiveItem(pathname: string) {
     }
   }
   return null;
-}
-
-// SVG Logo
-function CryoVaultLogo({ size = 36 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="36" height="36" rx="9" fill="url(#cv_grad)" />
-      {/* Snowflake arms */}
-      <line x1="18" y1="7" x2="18" y2="29" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="7" y1="18" x2="29" y2="18" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="10.5" y1="10.5" x2="25.5" y2="25.5" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="25.5" y1="10.5" x2="10.5" y2="25.5" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
-      {/* Center dot */}
-      <circle cx="18" cy="18" r="2.5" fill="white" />
-      {/* Arm tips */}
-      <circle cx="18" cy="7.5" r="1.5" fill="white" />
-      <circle cx="18" cy="28.5" r="1.5" fill="white" />
-      <circle cx="7.5" cy="18" r="1.5" fill="white" />
-      <circle cx="28.5" cy="18" r="1.5" fill="white" />
-      <defs>
-        <linearGradient id="cv_grad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#2563eb" />
-          <stop offset="1" stopColor="#0891b2" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -198,6 +173,8 @@ export function AppLayout({ children }: AppLayoutProps) {
             </span>
           </div>
         </header>
+
+        <InstallAppBanner />
 
         {/* Content */}
         <main className="flex-1 overflow-auto bg-gray-50 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
