@@ -36,8 +36,13 @@ export function LoginPage() {
 
     try {
       await signIn(email, password);
-    } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión');
+      const target = from
+        ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`
+        : '/dashboard';
+      navigate(target, { replace: true });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
+    } finally {
       setIsSubmitting(false);
     }
   };

@@ -124,8 +124,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    })
     if (error) throw error
+    if (!data.user) throw new Error('No se pudo iniciar sesión')
+
+    const profile = await fetchProfile(data.user.id)
+    if (!profile) {
+      await supabase.auth.signOut()
+      throw new Error(
+        'No se encontró tu perfil de usuario. Pide a un administrador que verifique tu cuenta.',
+      )
+    }
+    setUser(profile)
+    setIsLoading(false)
   }
 
   const signOut = async () => {

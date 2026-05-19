@@ -4,4 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = "https://yyfthcebyqylhjkrzsph.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5ZnRoY2VieXF5bGhqa3J6c3BoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NjA3NzcsImV4cCI6MjA5NDQzNjc3N30.9n7aM1ZyUkuZBlIu_SZXgqJ-Oaocd6IcioRq3vXYC5Y";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
