@@ -85,7 +85,8 @@ Deno.serve(async (req) => {
 
   if (labError || !lab) return json({ error: 'Laboratorio no encontrado' }, 400);
 
-  const redirectTo = `${req.headers.get('origin') || ''}/login`;
+  const origin = req.headers.get('origin')?.replace(/\/$/, '') || '';
+  const redirectTo = `${origin}/Cryovault/accept-invite`;
   const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
     redirectTo,
     data: {

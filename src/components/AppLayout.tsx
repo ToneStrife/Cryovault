@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { LayoutGrid, Search, ChartBar as BarChart3, Settings, Users, LogOut, Menu, X, Snowflake, Package2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, Search, ChartBar as BarChart3, Settings, Users, LogOut, Menu, X, Snowflake, Package2, ChevronLeft, ChevronRight, UserCircle } from 'lucide-react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -118,10 +118,23 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* User */}
         <div className="px-2 py-4 border-t border-gray-100 space-y-2">
           {sidebarOpen && (
-            <div className="px-3 py-2 rounded-lg bg-gray-50">
+            <Link
+              to="/profile"
+              className="block px-3 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+            >
               <p className="text-xs font-semibold text-gray-700 truncate">{user?.full_name || user?.email}</p>
               <p className="text-xs text-gray-400 capitalize truncate">{user?.role}</p>
-            </div>
+              <p className="text-[10px] text-blue-600 mt-1 font-medium">Ver perfil</p>
+            </Link>
+          )}
+          {!sidebarOpen && (
+            <Link
+              to="/profile"
+              title="Mi perfil"
+              className="flex justify-center p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors"
+            >
+              <UserCircle className="w-5 h-5" />
+            </Link>
           )}
           <button
             onClick={handleSignOut}
@@ -169,7 +182,14 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="hidden sm:block text-xs text-gray-400 font-medium capitalize bg-gray-100 px-2.5 py-1 rounded-full">
+            <Link
+              to="/profile"
+              className="hidden sm:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
+            >
+              <UserCircle className="w-5 h-5" />
+              <span className="max-w-[140px] truncate">{user?.full_name || user?.email}</span>
+            </Link>
+            <span className="hidden md:block text-xs text-gray-400 font-medium capitalize bg-gray-100 px-2.5 py-1 rounded-full">
               {user?.role}
             </span>
           </div>
@@ -242,10 +262,15 @@ export function AppLayout({ children }: AppLayoutProps) {
               })}
             </nav>
             <div className="px-4 py-4 border-t border-gray-100">
-              <div className="mb-3 p-3 rounded-lg bg-gray-50">
+              <Link
+                to="/profile"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block mb-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
                 <p className="text-sm font-medium text-gray-800">{user?.full_name || user?.email}</p>
                 <p className="text-xs text-gray-400 capitalize">{user?.role}</p>
-              </div>
+                <p className="text-xs text-blue-600 mt-1 font-medium">Mi perfil</p>
+              </Link>
               <button
                 onClick={handleSignOut}
                 className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors"

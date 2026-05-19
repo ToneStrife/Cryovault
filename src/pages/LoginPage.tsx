@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { hasAuthCallbackHash } from '@/lib/appUrl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CircleAlert as AlertCircle, Snowflake } from 'lucide-react';
@@ -14,6 +15,10 @@ export function LoginPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (hasAuthCallbackHash()) {
+      navigate('/accept-invite', { replace: true });
+      return;
+    }
     if (isAuthenticated) {
       navigate('/dashboard', { replace: true });
     }
@@ -71,7 +76,12 @@ export function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Contraseña</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-gray-700">Contraseña</label>
+                <Link to="/forgot-password" className="text-xs text-blue-600 hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </div>
               <Input
                 type="password"
                 placeholder="••••••••"
@@ -90,6 +100,10 @@ export function LoginPage() {
               {isSubmitting ? 'Accediendo...' : 'Iniciar sesión'}
             </Button>
           </form>
+
+          <p className="mt-5 text-center text-xs text-gray-500">
+            ¿Primera vez? Usa el enlace del email de invitación que te envió tu administrador.
+          </p>
         </div>
       </div>
     </div>

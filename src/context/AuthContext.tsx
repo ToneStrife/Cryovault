@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { appPath } from '@/lib/appUrl';
 import type { Profile } from '@/types'
 
 interface AuthContextType {
@@ -9,6 +10,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -130,8 +133,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  const requestPasswordReset = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: appPath('/accept-invite'),
+    })
+    if (error) throw error
+  }
+
+  const refreshUser = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) {
+      setUser(null)
+      return
+    }
+    const profile = await fetchProfile(session.user.id)
+    setUser(profile)
+  }, [fetchProfile])
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, signUp, signIn, signOut, requestPasswordReset, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

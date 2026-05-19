@@ -1,11 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
+import { AcceptInvitePage } from './pages/AcceptInvitePage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { BoxesPage } from './pages/BoxesPage';
 import { FreezersPage } from './pages/FreezersPage';
 import { SearchPage } from './pages/SearchPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { UsersPage } from './pages/UsersPage';
 import { FreezerDetailPage } from './pages/FreezerDetailPage';
 import { BoxDetailPage } from './pages/BoxDetailPage';
@@ -15,6 +18,8 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route
         path="/*"
         element={
@@ -29,6 +34,7 @@ function App() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
