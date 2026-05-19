@@ -11,6 +11,7 @@ import {
 import { Users, Shield, ChevronDown, UserPlus, Mail, Clock, X, Check, KeyRound, Building2 } from 'lucide-react';
 import type { Laboratory, Profile, UserRole } from '@/types';
 import { selectClass } from '@/lib/formStyles';
+import { parseEdgeFunctionError } from '@/lib/edgeFunction';
 
 const LAB_ROLES: UserRole[] = ['admin', 'researcher', 'technician', 'read_only'];
 
@@ -184,14 +185,18 @@ export function UsersPage() {
 
   const inviteMutation = useMutation({
     mutationFn: async ({ email, role, laboratory }: { email: string; role: UserRole; laboratory: string }) => {
-      const { error } = await supabase.functions.invoke('invite-user', {
+      const { data, error } = await supabase.functions.invoke('invite-user', {
         body: {
-        email: email.trim().toLowerCase(),
-        role,
-        laboratory,
+          action: 'invite',
+          email: email.trim().toLowerCase(),
+          role,
+          laboratory,
         },
       });
-      if (error) throw error;
+      const message = await parseEdgeFunctionError(error, data);
+      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
+        throw new Error(message);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invites'] });
@@ -200,9 +205,25 @@ export function UsersPage() {
       setInviteRole('researcher');
       setInviteLaboratory(user?.laboratory || '');
       setInviteError('');
-      setInviteSuccess('Se ha enviado un email para crear contraseña.');
+      setInviteSuccess('Invitación enviada. El usuario recibirá un enlace por email para activar la cuenta.');
     },
     onError: (e: any) => setInviteError(e.message),
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { action: 'resend', email: email.trim().toLowerCase() },
+      });
+      const message = await parseEdgeFunctionError(error, data);
+      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
+        throw new Error(message);
+      }
+    },
+    onSuccess: () => {
+      setInviteSuccess('Enlace mágico reenviado por email.');
+    },
+    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al reenviar'),
   });
 
   const revokeInviteMutation = useMutation({
@@ -408,12 +429,27 @@ export function UsersPage() {
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => revokeInviteMutation.mutate(inv.id)}
-                      className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" /> Revocar
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInviteError('');
+                          resendInviteMutation.mutate(inv.email);
+                        }}
+                        disabled={resendInviteMutation.isPending}
+                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-colors disabled:opacity-50"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        {resendInviteMutation.isPending ? 'Enviando...' : 'Reenviar enlace'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => revokeInviteMutation.mutate(inv.id)}
+                        className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" /> Revocar
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

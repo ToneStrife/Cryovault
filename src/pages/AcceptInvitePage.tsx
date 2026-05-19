@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import {
+  establishSessionFromUrl,
+  needsPasswordSetup,
+} from '@/lib/authCallback';
+import { getAuthHashType } from '@/lib/appUrl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertCircle, Snowflake } from 'lucide-react';
@@ -22,33 +27,45 @@ export function AcceptInvitePage() {
     let timeoutId: number | undefined;
     let subscription: { unsubscribe: () => void } | undefined;
 
-    const init = async () => {
-      const hash = window.location.hash.replace(/^#/, '');
-      const hashParams = hash ? new URLSearchParams(hash) : null;
-      const type = hashParams?.get('type');
+    const applySession = async () => {
+      const type = getAuthHashType();
       if (type === 'recovery') setFlowType('recovery');
-      else if (type === 'invite') setFlowType('invite');
+      else if (type === 'invite' || type === 'signup' || type === 'magiclink') setFlowType('invite');
       else setFlowType('other');
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const { session, error: sessionError } = await establishSessionFromUrl();
       if (cancelled) return;
+
+      if (sessionError) {
+        setError(sessionError);
+        setPageState('invalid');
+        return;
+      }
 
       if (session?.user?.email) {
         setEmail(session.user.email);
+        const authType = getAuthHashType();
+        if (authType !== 'recovery' && !needsPasswordSetup(session.user)) {
+          const hasProfile = await ensureProfile(session.user.id);
+          if (hasProfile) {
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+        }
         setPageState('ready');
         return;
       }
 
       timeoutId = window.setTimeout(async () => {
         if (cancelled) return;
-        const { data: { session: retrySession } } = await supabase.auth.getSession();
-        if (retrySession?.user?.email) {
-          setEmail(retrySession.user.email);
+        const retry = await establishSessionFromUrl();
+        if (retry.session?.user?.email) {
+          setEmail(retry.session.user.email);
           setPageState('ready');
         } else {
           setPageState('invalid');
         }
-      }, 2500);
+      }, 3000);
 
       const { data: { subscription: sub } } = supabase.auth.onAuthStateChange((_event, newSession) => {
         if (cancelled || !newSession?.user?.email) return;
@@ -59,14 +76,14 @@ export function AcceptInvitePage() {
       subscription = sub;
     };
 
-    init();
+    applySession();
 
     return () => {
       cancelled = true;
       if (timeoutId) window.clearTimeout(timeoutId);
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [navigate]);
 
   const validatePasswords = () => {
     if (password.length < 8) {
@@ -78,13 +95,6 @@ export function AcceptInvitePage() {
       return false;
     }
     return true;
-  };
-
-  const markInviteAccepted = async (userEmail: string) => {
-    await (supabase.from('invites') as any)
-      .update({ accepted_at: new Date().toISOString() })
-      .eq('email', userEmail.toLowerCase())
-      .is('accepted_at', null);
   };
 
   const ensureProfile = async (userId: string) => {
@@ -104,7 +114,16 @@ export function AcceptInvitePage() {
 
     setIsSubmitting(true);
     try {
-      const { error: updateError } = await supabase.auth.updateUser({ password });
+      const { data: { user: before } } = await supabase.auth.getUser();
+      const meta = before?.user_metadata ?? {};
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+        data: {
+          ...meta,
+          needs_password_setup: false,
+        },
+      });
       if (updateError) throw updateError;
 
       const { data: { user } } = await supabase.auth.getUser();
@@ -115,10 +134,6 @@ export function AcceptInvitePage() {
         throw new Error(
           'Tu cuenta no tiene perfil asignado. Contacta al administrador del laboratorio.',
         );
-      }
-
-      if (user.email) {
-        await markInviteAccepted(user.email);
       }
 
       window.history.replaceState(null, '', window.location.pathname);
@@ -168,7 +183,8 @@ export function AcceptInvitePage() {
               <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
               <h2 className="text-lg font-semibold text-gray-900">Enlace inválido o caducado</h2>
               <p className="text-sm text-gray-600">
-                Pide a un administrador que te reenvíe la invitación o usa «Olvidé mi contraseña» si ya tenías cuenta.
+                {error ||
+                  'Pide a un administrador que te reenvíe la invitación o usa «Olvidé mi contraseña» si ya tenías cuenta.'}
               </p>
               <Link
                 to="/login"

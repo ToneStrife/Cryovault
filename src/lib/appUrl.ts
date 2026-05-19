@@ -25,19 +25,13 @@ export async function copyAppLink(path: string): Promise<boolean> {
   }
 }
 
-/** True when the URL hash contains an auth callback (invite, recovery, etc.). */
-export function hasAuthCallbackHash() {
-  const hash = window.location.hash.replace(/^#/, '');
-  if (!hash) return false;
-  const params = new URLSearchParams(hash);
-  const type = params.get('type');
-  return (
-    params.has('access_token') &&
-    (type === 'invite' || type === 'recovery' || type === 'signup')
-  );
-}
+export { hasAuthCallbackInUrl, hasAuthCallbackHash } from '@/lib/authCallback';
 
 export function getAuthHashType(): string | null {
+  const search = new URLSearchParams(window.location.search);
+  const searchType = search.get('type');
+  if (searchType) return searchType;
+
   const hash = window.location.hash.replace(/^#/, '');
   if (!hash) return null;
   return new URLSearchParams(hash).get('type');

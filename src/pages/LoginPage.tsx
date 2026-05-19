@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { hasAuthCallbackHash } from '@/lib/appUrl';
+import { hasAuthCallbackInUrl } from '@/lib/appUrl';
+import { needsPasswordSetup } from '@/lib/authCallback';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CircleAlert as AlertCircle, Snowflake } from 'lucide-react';
@@ -17,7 +19,7 @@ export function LoginPage() {
   const from = (location.state as { from?: { pathname: string; search?: string; hash?: string } })?.from;
 
   useEffect(() => {
-    if (hasAuthCallbackHash()) {
+    if (hasAuthCallbackInUrl()) {
       navigate('/accept-invite', { replace: true });
       return;
     }
@@ -36,6 +38,11 @@ export function LoginPage() {
 
     try {
       await signIn(email, password);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && needsPasswordSetup(user)) {
+        navigate('/accept-invite', { replace: true });
+        return;
+      }
       const target = from
         ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`
         : '/dashboard';
