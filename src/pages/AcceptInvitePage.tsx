@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import {
-  establishSessionFromUrl,
+  establishSessionFromUrlOnce,
   needsPasswordSetup,
 } from '@/lib/authCallback';
 import { getAuthHashType } from '@/lib/appUrl';
@@ -11,6 +12,12 @@ import { Input } from '@/components/ui/input';
 import { AlertCircle, Snowflake } from 'lucide-react';
 
 type PageState = 'loading' | 'ready' | 'invalid' | 'done';
+
+const WAIT_MS = 5000;
+
+function isPkceVerifierError(message: string) {
+  return /pkce|code verifier/i.test(message);
+}
 
 export function AcceptInvitePage() {
   const navigate = useNavigate();
@@ -22,56 +29,92 @@ export function AcceptInvitePage() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const ensureProfile = useCallback(async (userId: string) => {
+    const { data, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profileError) throw profileError;
+    return !!data;
+  }, []);
+
+  const handleSessionReady = useCallback(
+    async (session: Session) => {
+      if (!session.user.email) return false;
+      setEmail(session.user.email);
+
+      const authType = getAuthHashType();
+      if (authType !== 'recovery' && !needsPasswordSetup(session.user)) {
+        const hasProfile = await ensureProfile(session.user.id);
+        if (hasProfile) {
+          navigate('/dashboard', { replace: true });
+          return true;
+        }
+      }
+      setPageState('ready');
+      return true;
+    },
+    [ensureProfile, navigate],
+  );
+
   useEffect(() => {
     let cancelled = false;
     let timeoutId: number | undefined;
     let subscription: { unsubscribe: () => void } | undefined;
+    let lastError = '';
 
-    const applySession = async () => {
+    const applyFlowType = () => {
       const type = getAuthHashType();
       if (type === 'recovery') setFlowType('recovery');
       else if (type === 'invite' || type === 'signup' || type === 'magiclink') setFlowType('invite');
       else setFlowType('other');
+    };
 
-      const { session, error: sessionError } = await establishSessionFromUrl();
+    const fail = (message: string) => {
+      if (cancelled) return;
+      setError(message);
+      setPageState('invalid');
+    };
+
+    const applySession = async () => {
+      applyFlowType();
+
+      const { session, error: sessionError } = await establishSessionFromUrlOnce();
       if (cancelled) return;
 
       if (sessionError) {
-        setError(sessionError);
-        setPageState('invalid');
-        return;
+        lastError = sessionError;
+        if (!isPkceVerifierError(sessionError)) {
+          fail(sessionError);
+          return;
+        }
       }
 
       if (session?.user?.email) {
-        setEmail(session.user.email);
-        const authType = getAuthHashType();
-        if (authType !== 'recovery' && !needsPasswordSetup(session.user)) {
-          const hasProfile = await ensureProfile(session.user.id);
-          if (hasProfile) {
-            navigate('/dashboard', { replace: true });
-            return;
-          }
-        }
-        setPageState('ready');
-        return;
+        const done = await handleSessionReady(session);
+        if (done || cancelled) return;
       }
 
       timeoutId = window.setTimeout(async () => {
         if (cancelled) return;
-        const retry = await establishSessionFromUrl();
-        if (retry.session?.user?.email) {
-          setEmail(retry.session.user.email);
-          setPageState('ready');
-        } else {
-          setPageState('invalid');
+        const { data: { session: lateSession } } = await supabase.auth.getSession();
+        if (lateSession?.user?.email) {
+          await handleSessionReady(lateSession);
+          return;
         }
-      }, 3000);
+        fail(
+          lastError ||
+            'No se pudo validar el enlace. Pide a un administrador que te reenvíe la invitación.',
+        );
+      }, WAIT_MS);
 
-      const { data: { subscription: sub } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      const { data: { subscription: sub } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         if (cancelled || !newSession?.user?.email) return;
-        setEmail(newSession.user.email);
-        setPageState('ready');
-        if (timeoutId) window.clearTimeout(timeoutId);
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+          const handled = await handleSessionReady(newSession);
+          if (handled && timeoutId) window.clearTimeout(timeoutId);
+        }
       });
       subscription = sub;
     };
@@ -83,7 +126,7 @@ export function AcceptInvitePage() {
       if (timeoutId) window.clearTimeout(timeoutId);
       subscription?.unsubscribe();
     };
-  }, [navigate]);
+  }, [handleSessionReady]);
 
   const validatePasswords = () => {
     if (password.length < 8) {
@@ -95,16 +138,6 @@ export function AcceptInvitePage() {
       return false;
     }
     return true;
-  };
-
-  const ensureProfile = async (userId: string) => {
-    const { data, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
-    if (profileError) throw profileError;
-    return !!data;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -182,10 +215,7 @@ export function AcceptInvitePage() {
             <div className="text-center space-y-4">
               <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
               <h2 className="text-lg font-semibold text-gray-900">Enlace inválido o caducado</h2>
-              <p className="text-sm text-gray-600">
-                {error ||
-                  'Pide a un administrador que te reenvíe la invitación o usa «Olvidé mi contraseña» si ya tenías cuenta.'}
-              </p>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{error}</p>
               <Link
                 to="/login"
                 className="inline-block text-sm text-blue-600 hover:underline font-medium"
