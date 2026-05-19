@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Download } from 'lucide-react';
+import { Download, ArchiveRestore, RotateCcw } from 'lucide-react';
 import type { Sample, Freezer, Box } from '@/types';
 import { formatAuditLog, makeUserMap } from '@/lib/auditFormat';
+import { canManageBoxes } from '@/lib/labPermissions';
+import { restoreBoxWithSamples, unarchiveBox, parseDeletedSampleIds } from '@/lib/boxLifecycle';
 
-const TABS = ['Inventario', 'Por tipo', 'Por estado', 'Auditoría'];
+const TABS = ['Inventario', 'Por tipo', 'Por estado', 'Auditoría', 'Papelera'];
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#22c55e',
@@ -43,12 +45,15 @@ function downloadCSV(rows: any[], filename: string) {
 
 export function ReportsPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
+  const [trashError, setTrashError] = useState('');
+  const canManage = canManageBoxes(user?.role);
 
   const { data: samples = [] } = useQuery({
     queryKey: ['samples-report'],
     queryFn: async () => {
-      const { data } = await supabase.from('samples').select('*').order('created_at', { ascending: false });
+      const { data } = await supabase.from('samples').select('*').is('deleted_at', null).order('created_at', { ascending: false });
       return (data || []) as Sample[];
     },
     enabled: !!user,
@@ -66,10 +71,39 @@ export function ReportsPage() {
   const { data: boxes = [] } = useQuery({
     queryKey: ['boxes-report'],
     queryFn: async () => {
-      const { data } = await supabase.from('boxes').select('*').order('name');
+      const { data } = await supabase.from('boxes').select('*').is('deleted_at', null).order('name');
       return (data || []) as Box[];
     },
     enabled: !!user,
+  });
+
+  const { data: deletedBoxes = [] } = useQuery({
+    queryKey: ['boxes-trash'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('boxes')
+        .select('*')
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as Box[];
+    },
+    enabled: !!user && canManage,
+  });
+
+  const { data: archivedBoxes = [] } = useQuery({
+    queryKey: ['boxes-archived-trash'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('boxes')
+        .select('*')
+        .eq('archived', true)
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as Box[];
+    },
+    enabled: !!user && canManage,
   });
 
   const { data: auditLogs = [] } = useQuery({
@@ -111,6 +145,43 @@ export function ReportsPage() {
   ).map(([name, value]) => ({ name, value }));
 
   const activeSamples = samples.filter((s) => s.status === 'active');
+
+  const restoreBoxMutation = useMutation({
+    mutationFn: async (boxId: string) => {
+      const { data: logs, error } = await supabase
+        .from('audit_logs')
+        .select('new_values')
+        .eq('entity_type', 'box')
+        .eq('entity_id', boxId)
+        .eq('action', 'delete')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      const sampleIds = parseDeletedSampleIds(logs?.[0]?.new_values);
+      await restoreBoxWithSamples(boxId, sampleIds);
+    },
+    onSuccess: () => {
+      setTrashError('');
+      queryClient.invalidateQueries({ queryKey: ['boxes-trash'] });
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes-report'] });
+      queryClient.invalidateQueries({ queryKey: ['samples-report'] });
+      queryClient.invalidateQueries({ queryKey: ['audit-report'] });
+    },
+    onError: (e: Error) => setTrashError(e.message),
+  });
+
+  const unarchiveBoxMutation = useMutation({
+    mutationFn: (boxId: string) => unarchiveBox(boxId),
+    onSuccess: () => {
+      setTrashError('');
+      queryClient.invalidateQueries({ queryKey: ['boxes-archived-trash'] });
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes'] });
+    },
+    onError: (e: Error) => setTrashError(e.message),
+  });
 
   return (
     <AppLayout>
@@ -352,6 +423,84 @@ export function ReportsPage() {
                       })
                     )}
                   </div>
+                </div>
+              )}
+
+              {activeTab === 4 && (
+                <div>
+                  {!canManage ? (
+                    <p className="text-sm text-gray-500 text-center py-8">No tienes permiso para gestionar la papelera.</p>
+                  ) : (
+                    <>
+                      {trashError && (
+                        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{trashError}</p>
+                      )}
+                      <section className="mb-8">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3">Cajas eliminadas</h3>
+                        {deletedBoxes.length === 0 ? (
+                          <p className="text-sm text-gray-400 py-4 text-center bg-gray-50 rounded-lg border border-gray-100">No hay cajas en la papelera</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {deletedBoxes.map((b) => (
+                              <div key={b.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-gray-900 truncate">{b.name}</p>
+                                  <p className="text-xs text-gray-500">
+                                    Eliminada {b.deleted_at ? new Date(b.deleted_at).toLocaleString('es-ES') : '—'}
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={restoreBoxMutation.isPending}
+                                  onClick={() => {
+                                    if (confirm(`¿Restaurar la caja «${b.name}» y sus muestras?`)) {
+                                      restoreBoxMutation.mutate(b.id);
+                                    }
+                                  }}
+                                  className="border-gray-300 text-gray-700 shrink-0"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                                  Restaurar
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                      <section>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3">Cajas archivadas</h3>
+                        {archivedBoxes.length === 0 ? (
+                          <p className="text-sm text-gray-400 py-4 text-center bg-gray-50 rounded-lg border border-gray-100">No hay cajas archivadas</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {archivedBoxes.map((b) => (
+                              <div key={b.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-gray-900 truncate">{b.name}</p>
+                                  <p className="text-xs text-gray-500">Archivada</p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={unarchiveBoxMutation.isPending}
+                                  onClick={() => {
+                                    if (confirm(`¿Desarchivar la caja «${b.name}»?`)) {
+                                      unarchiveBoxMutation.mutate(b.id);
+                                    }
+                                  }}
+                                  className="border-gray-300 text-gray-700 shrink-0"
+                                >
+                                  <ArchiveRestore className="w-3.5 h-3.5 mr-1" />
+                                  Desarchivar
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    </>
+                  )}
                 </div>
               )}
             </div>

@@ -411,7 +411,7 @@ export function FreezerDetailPage() {
   const { data: boxes = [], isLoading } = useQuery({
     queryKey: ['boxes', id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('boxes').select('*').eq('freezer_id', id!).order('created_at', { ascending: true });
+      const { data, error } = await supabase.from('boxes').select('*').eq('freezer_id', id!).is('deleted_at', null).order('created_at', { ascending: true });
       if (error) throw error;
       return data as BoxType[];
     },

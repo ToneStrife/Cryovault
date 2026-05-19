@@ -109,6 +109,8 @@ export interface Database {
           occupancy: number;
           qr_code: string | null;
           archived: boolean;
+          deleted_at: string | null;
+          deleted_by: string | null;
           created_at: string;
           updated_at: string;
           created_by: string;

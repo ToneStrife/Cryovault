@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
@@ -15,7 +15,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
+import { X, Pencil, Download, Archive, Chrome as Home, UserPlus, LayoutGrid, ChevronRight, QrCode, Printer, Check, FileText, Table2, Save, Image, FlaskConical, ClipboardPaste, Upload, ArrowUpFromLine, ArrowDownToLine, Trash2, ArchiveRestore } from 'lucide-react';
+import { canManageBoxes } from '@/lib/labPermissions';
+import { archiveBox, unarchiveBox, softDeleteBoxWithSamples, getBoxSampleCounts } from '@/lib/boxLifecycle';
+import { BoxDeleteConfirmDialog } from '@/components/box/BoxDeleteConfirmDialog';
 import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
 import {
   DndContext,
@@ -210,7 +213,9 @@ type ViewMode = 'grid' | 'spreadsheet';
 export function BoxDetailPage() {
   const { freezerId, boxId } = useParams<{ freezerId: string; boxId: string }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const canManage = canManageBoxes(user?.role);
   const { options: settingsOptions } = useSettingsOptions(user?.laboratory);
   const {
     checkoutSample,
@@ -252,6 +257,10 @@ export function BoxDetailPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [showDeleteBoxDialog, setShowDeleteBoxDialog] = useState(false);
+  const [deleteSampleCount, setDeleteSampleCount] = useState(0);
+  const [deleteInUseCount, setDeleteInUseCount] = useState(0);
+  const [boxActionError, setBoxActionError] = useState('');
   const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
   const [activeDragSample, setActiveDragSample] = useState<Sample | null>(null);
   const [gridInteractionLocked, setGridInteractionLocked] = useState(false);
@@ -320,12 +329,55 @@ export function BoxDetailPage() {
   const { data: samples = [] } = useQuery({
     queryKey: ['box-samples', boxId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('samples').select('*').eq('box_id', boxId!);
+      const { data, error } = await supabase.from('samples').select('*').eq('box_id', boxId!).is('deleted_at', null);
       if (error) throw error;
       return data as Sample[];
     },
-    enabled: !!boxId && !!user,
+    enabled: !!boxId && !!user && !!box && !box.deleted_at,
   });
+
+  const archiveBoxMutation = useMutation({
+    mutationFn: () => archiveBox(boxId!),
+    onSuccess: () => {
+      invalidateBoxData();
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+    },
+    onError: (e: Error) => setBoxActionError(e.message),
+  });
+
+  const unarchiveBoxMutation = useMutation({
+    mutationFn: () => unarchiveBox(boxId!),
+    onSuccess: () => {
+      invalidateBoxData();
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+    },
+    onError: (e: Error) => setBoxActionError(e.message),
+  });
+
+  const deleteBoxMutation = useMutation({
+    mutationFn: () => softDeleteBoxWithSamples(boxId!, user!.id),
+    onSuccess: () => {
+      setShowDeleteBoxDialog(false);
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes', freezerId] });
+      queryClient.invalidateQueries({ queryKey: ['audit-report'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes-trash'] });
+      navigate('/boxes');
+    },
+    onError: (e: Error) => setBoxActionError(e.message),
+  });
+
+  const openDeleteBoxDialog = async () => {
+    setBoxActionError('');
+    try {
+      const counts = await getBoxSampleCounts(boxId!);
+      setDeleteSampleCount(counts.total);
+      setDeleteInUseCount(counts.inUse);
+      setShowDeleteBoxDialog(true);
+    } catch (e: unknown) {
+      setBoxActionError(e instanceof Error ? e.message : 'No se pudo cargar el conteo de muestras');
+    }
+  };
 
   const boxInUse = box?.status === 'in_use';
 
@@ -968,6 +1020,22 @@ export function BoxDetailPage() {
     );
   }
 
+  if (box.deleted_at) {
+    return (
+      <AppLayout>
+        <div className="min-h-full bg-gray-50 p-8">
+          <div className="max-w-lg mx-auto bg-white border border-red-200 rounded-xl p-6 text-center">
+            <h1 className="text-lg font-semibold text-gray-900 mb-2">Caja eliminada</h1>
+            <p className="text-sm text-gray-600 mb-4">
+              «{box.name}» está en la papelera. Puedes restaurarla desde Informes → Papelera.
+            </p>
+            <Link to="/reports" className="text-sm text-blue-600 hover:underline">Ir a Informes</Link>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   const rows = box.rows;
   const cols = box.columns;
   const total = rows * cols;
@@ -1112,6 +1180,9 @@ export function BoxDetailPage() {
                 </p>
               )}
               {box.description && <p className="text-xs text-gray-400 mt-0.5">{box.description}</p>}
+              {boxActionError && (
+                <p className="text-xs text-red-600 mt-1">{boxActionError}</p>
+              )}
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -1140,7 +1211,36 @@ export function BoxDetailPage() {
               <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
                 <button onClick={handleExportXLSX} disabled={samples.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"><Download className="w-4 h-4" /> Excel</button>
               </div>
-              <Button variant="outline" disabled className="border-red-200 text-red-400 text-sm hover:bg-red-50"><Archive className="w-4 h-4" /> Archivar</Button>
+              {canManage && !box.deleted_at && (
+                <>
+                  {box.archived ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => { if (confirm('¿Desarchivar esta caja? Volverá a aparecer en los listados.')) unarchiveBoxMutation.mutate(); }}
+                      disabled={unarchiveBoxMutation.isPending}
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"
+                    >
+                      <ArchiveRestore className="w-4 h-4" /> Desarchivar
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => { if (confirm('¿Archivar esta caja? Las muestras se mantienen; la caja se ocultará de los listados.')) archiveBoxMutation.mutate(); }}
+                      disabled={archiveBoxMutation.isPending}
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"
+                    >
+                      <Archive className="w-4 h-4" /> Archivar
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={openDeleteBoxDialog}
+                    className="border-red-200 text-red-600 hover:bg-red-50 text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" /> Eliminar
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1939,6 +2039,16 @@ export function BoxDetailPage() {
         open={showReturnDialog}
         onClose={() => { setShowReturnDialog(false); setReturnTarget(null); }}
         onSuccess={() => invalidateBoxData()}
+      />
+
+      <BoxDeleteConfirmDialog
+        open={showDeleteBoxDialog}
+        onOpenChange={setShowDeleteBoxDialog}
+        boxName={box.name}
+        sampleCount={deleteSampleCount}
+        inUseCount={deleteInUseCount}
+        isPending={deleteBoxMutation.isPending}
+        onConfirm={() => deleteBoxMutation.mutate()}
       />
     </AppLayout>
   );

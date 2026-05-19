@@ -25,8 +25,14 @@ import {
   Check,
   X,
   Upload,
+  Archive,
+  ArchiveRestore,
+  Trash2,
 } from 'lucide-react';
 import { BOX_STATUS_LABEL, BOX_TYPE_LABEL, labelOption, useSettingsOptions } from '@/lib/settingsOptions';
+import { canManageBoxes } from '@/lib/labPermissions';
+import { archiveBox, unarchiveBox, softDeleteBoxWithSamples, getBoxSampleCounts } from '@/lib/boxLifecycle';
+import { BoxDeleteConfirmDialog } from '@/components/box/BoxDeleteConfirmDialog';
 import type { Box, Freezer, Rack } from '@/types';
 
 interface BoxWithContext extends Box {
@@ -117,6 +123,13 @@ export function BoxesPage() {
 
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BoxWithContext | null>(null);
+  const [deleteSampleCount, setDeleteSampleCount] = useState(0);
+  const [deleteInUseCount, setDeleteInUseCount] = useState(0);
+  const [listActionError, setListActionError] = useState('');
+
+  const canManage = canManageBoxes(user?.role);
 
   const { data: freezers = [] } = useQuery({
     queryKey: ['freezers'],
@@ -139,13 +152,15 @@ export function BoxesPage() {
   });
 
   const { data: boxes = [], isLoading } = useQuery({
-    queryKey: ['all-boxes'],
+    queryKey: ['all-boxes', showArchived],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('boxes')
-        .select('*')
-        .eq('archived', false)
-        .order('created_at', { ascending: false });
+      let query = supabase.from('boxes').select('*').is('deleted_at', null);
+      if (showArchived) {
+        query = query.eq('archived', true);
+      } else {
+        query = query.eq('archived', false);
+      }
+      const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
       return data as Box[];
     },
@@ -237,6 +252,52 @@ export function BoxesPage() {
       queryClient.invalidateQueries({ queryKey: ['boxes'] });
     },
   });
+
+  const archiveMutation = useMutation({
+    mutationFn: (id: string) => archiveBox(id),
+    onSuccess: () => {
+      setListActionError('');
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes'] });
+    },
+    onError: (e: Error) => setListActionError(e.message),
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: (id: string) => unarchiveBox(id),
+    onSuccess: () => {
+      setListActionError('');
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes'] });
+    },
+    onError: (e: Error) => setListActionError(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => softDeleteBoxWithSamples(id, user!.id),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      setListActionError('');
+      queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes'] });
+      queryClient.invalidateQueries({ queryKey: ['boxes-trash'] });
+      queryClient.invalidateQueries({ queryKey: ['audit-report'] });
+    },
+    onError: (e: Error) => setListActionError(e.message),
+  });
+
+  const openDeleteDialog = async (box: BoxWithContext, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setListActionError('');
+    try {
+      const counts = await getBoxSampleCounts(box.id);
+      setDeleteSampleCount(counts.total);
+      setDeleteInUseCount(counts.inUse);
+      setDeleteTarget(box);
+    } catch (err: unknown) {
+      setListActionError(err instanceof Error ? err.message : 'Error al cargar muestras');
+    }
+  };
 
   const closeAddDialog = () => {
     setShowAddDialog(false);
@@ -366,6 +427,17 @@ export function BoxesPage() {
                 ))}
               </select>
             )}
+            {canManage && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Ver archivadas
+              </label>
+            )}
             <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 ml-auto">
               <button
                 onClick={() => setViewMode('grid')}
@@ -383,6 +455,10 @@ export function BoxesPage() {
               </button>
             </div>
           </div>
+
+          {listActionError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{listActionError}</p>
+          )}
 
           {isLoading ? (
             viewMode === 'grid' ? (
@@ -441,6 +517,16 @@ export function BoxesPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={box.status} />
+                        {canManage && (
+                          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                            {box.archived ? (
+                              <button type="button" title="Desarchivar" onClick={() => { if (confirm('¿Desarchivar esta caja?')) unarchiveMutation.mutate(box.id); }} className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"><ArchiveRestore className="w-3.5 h-3.5" /></button>
+                            ) : (
+                              <button type="button" title="Archivar" onClick={() => { if (confirm('¿Archivar esta caja?')) archiveMutation.mutate(box.id); }} className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"><Archive className="w-3.5 h-3.5" /></button>
+                            )}
+                            <button type="button" title="Eliminar" onClick={(e) => openDeleteDialog(box, e)} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        )}
                         <ChevronRight className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                       </div>
                     </div>
@@ -490,6 +576,7 @@ export function BoxesPage() {
                     <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Cuadrícula</th>
                     <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Ocupación</th>
                     <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Estado</th>
+                    {canManage && <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Acciones</th>}
                     <th className="w-10" />
                   </tr>
                 </thead>
@@ -555,6 +642,39 @@ export function BoxesPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3"><StatusBadge status={box.status} /></td>
+                        {canManage && (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              {box.archived ? (
+                                <button
+                                  type="button"
+                                  title="Desarchivar"
+                                  onClick={() => { if (confirm('¿Desarchivar esta caja?')) unarchiveMutation.mutate(box.id); }}
+                                  className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
+                                >
+                                  <ArchiveRestore className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  title="Archivar"
+                                  onClick={() => { if (confirm('¿Archivar esta caja?')) archiveMutation.mutate(box.id); }}
+                                  className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
+                                >
+                                  <Archive className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                title="Eliminar"
+                                onClick={(e) => openDeleteDialog(box, e)}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <Link
                             to={`/freezers/${box.freezerId}/box/${box.id}`}
@@ -744,6 +864,18 @@ export function BoxesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {deleteTarget && (
+        <BoxDeleteConfirmDialog
+          open={!!deleteTarget}
+          onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+          boxName={deleteTarget.name}
+          sampleCount={deleteSampleCount}
+          inUseCount={deleteInUseCount}
+          isPending={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
+        />
+      )}
     </AppLayout>
   );
 }
