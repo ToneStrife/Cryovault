@@ -1,0 +1,26 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1e3a8a"/>
+      <stop offset="0.5" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="logo_grad" x1="0" y1="0" x2="300" y2="300" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="120" y="165" width="300" height="300" rx="72" fill="url(#logo_grad)"/>
+  <line x1="270" y1="210" x2="270" y2="420" stroke="white" stroke-width="18" stroke-linecap="round"/>
+  <line x1="165" y1="315" x2="375" y2="315" stroke="white" stroke-width="18" stroke-linecap="round"/>
+  <line x1="191" y1="241" x2="349" y2="389" stroke="white" stroke-width="18" stroke-linecap="round"/>
+  <line x1="349" y1="241" x2="191" y2="389" stroke="white" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="270" cy="315" r="20" fill="white"/>
+  <circle cx="270" cy="225" r="12" fill="white"/>
+  <circle cx="270" cy="405" r="12" fill="white"/>
+  <circle cx="180" cy="315" r="12" fill="white"/>
+  <circle cx="360" cy="315" r="12" fill="white"/>
+  <text x="480" y="300" fill="white" font-family="Segoe UI, system-ui, sans-serif" font-size="96" font-weight="700">CryoVault</text>
+  <text x="480" y="380" fill="#e0f2fe" font-family="Segoe UI, system-ui, sans-serif" font-size="36">Biological sample management</text>
+</svg>
