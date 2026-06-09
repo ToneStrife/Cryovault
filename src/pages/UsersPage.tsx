@@ -16,6 +16,7 @@ import { appPath } from '@/lib/appUrl';
 import { Checkbox } from '@/components/ui/checkbox';
 
 const PROVISIONAL_PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const BACKEND_VERSION = 'provisioned-v2';
 
 type CredentialsResult = {
   email: string;
@@ -23,7 +24,28 @@ type CredentialsResult = {
   login_url: string;
   email_sent: boolean;
   email_error?: string;
+  version?: string;
 };
+
+type EdgeInviteResponse = CredentialsResult & {
+  error?: string;
+  version?: string;
+};
+
+function toCredentialsResult(data: EdgeInviteResponse): CredentialsResult {
+  return {
+    email: data.email,
+    temporary_password: data.temporary_password,
+    login_url: data.login_url || appPath('/login'),
+    email_sent: !!data.email_sent,
+    email_error: data.email_error,
+    version: data.version,
+  };
+}
+
+function isBackendStale(data: unknown): boolean {
+  return !(data && typeof data === 'object' && (data as EdgeInviteResponse).version === BACKEND_VERSION);
+}
 
 function generateProvisionalPassword(length = 12) {
   const bytes = new Uint8Array(length);
@@ -104,11 +126,12 @@ export function UsersPage() {
   const [inviteRole, setInviteRole] = useState<UserRole>('researcher');
   const [inviteLaboratory, setInviteLaboratory] = useState('');
   const [inviteError, setInviteError] = useState('');
-  const [inviteSuccess, setInviteSuccess] = useState('');
   const [invitePassword, setInvitePassword] = useState('');
-  const [sendInviteEmail, setSendInviteEmail] = useState(true);
+  const [sendInviteEmail, setSendInviteEmail] = useState(false);
   const [credentialsResult, setCredentialsResult] = useState<CredentialsResult | null>(null);
   const [credentialsCopied, setCredentialsCopied] = useState(false);
+  const [backendStale, setBackendStale] = useState(false);
+  const [inviteNotice, setInviteNotice] = useState<{ message: string; tone: 'success' | 'warning' } | null>(null);
   const [showLabDialog, setShowLabDialog] = useState(false);
   const [labName, setLabName] = useState('');
   const [labError, setLabError] = useState('');
@@ -243,9 +266,10 @@ export function UsersPage() {
       if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
         throw new Error(message);
       }
-      return data as CredentialsResult;
+      return data as EdgeInviteResponse;
     },
     onSuccess: (data) => {
+      setBackendStale(isBackendStale(data));
       queryClient.invalidateQueries({ queryKey: ['invites'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setShowInviteDialog(false);
@@ -255,50 +279,94 @@ export function UsersPage() {
       setInviteLaboratory(user?.laboratory || '');
       setInviteError('');
       setCredentialsCopied(false);
-      setCredentialsResult({
-        email: data.email,
-        temporary_password: data.temporary_password,
-        login_url: data.login_url || appPath('/login'),
-        email_sent: !!data.email_sent,
-        email_error: data.email_error,
-      });
+      setCredentialsResult(toCredentialsResult(data));
       if (data.email_sent) {
-        setInviteSuccess('Usuario creado y credenciales enviadas por email.');
+        setInviteNotice({ message: 'Usuario creado y credenciales enviadas por email.', tone: 'success' });
       } else {
-        setInviteSuccess('Usuario creado. Comparte las credenciales con el usuario.');
+        setInviteNotice({
+          message: data.email_error
+            ? `Usuario creado, pero el email no se envió: ${data.email_error}`
+            : 'Usuario creado. Comparte las credenciales con el usuario.',
+          tone: 'warning',
+        });
       }
     },
     onError: (e: any) => setInviteError(e.message),
   });
 
-  const resendInviteMutation = useMutation({
+  const getCredentialsMutation = useMutation({
     mutationFn: async (email: string) => {
       const { data, error } = await supabase.functions.invoke('invite-user', {
-        body: { action: 'reset_credentials', email: email.trim().toLowerCase(), send_email: true },
+        body: { action: 'get_credentials', email: email.trim().toLowerCase() },
       });
       const message = await parseEdgeFunctionError(error, data);
       if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
         throw new Error(message);
       }
-      return data as CredentialsResult;
+      return data as EdgeInviteResponse;
     },
     onSuccess: (data) => {
+      setBackendStale(isBackendStale(data));
       setInviteError('');
       setCredentialsCopied(false);
-      setCredentialsResult({
-        email: data.email,
-        temporary_password: data.temporary_password,
-        login_url: data.login_url || appPath('/login'),
-        email_sent: !!data.email_sent,
-        email_error: data.email_error,
+      setCredentialsResult(toCredentialsResult(data));
+      setInviteNotice(null);
+    },
+    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al obtener credenciales'),
+  });
+
+  const resendEmailMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { action: 'resend_email', email: email.trim().toLowerCase() },
       });
+      const message = await parseEdgeFunctionError(error, data);
+      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
+        throw new Error(message);
+      }
+      return data as EdgeInviteResponse;
+    },
+    onSuccess: (data) => {
+      setBackendStale(isBackendStale(data));
+      setInviteError('');
+      setCredentialsCopied(false);
+      setCredentialsResult(toCredentialsResult(data));
       if (data.email_sent) {
-        setInviteSuccess('Nueva contraseña provisional generada y enviada por email.');
+        setInviteNotice({ message: 'Email reenviado con la misma contraseña provisional.', tone: 'success' });
       } else {
-        setInviteSuccess('Nueva contraseña provisional generada. Compártela con el usuario.');
+        setInviteNotice({
+          message: data.email_error
+            ? `No se pudo reenviar el email: ${data.email_error}`
+            : 'No se pudo reenviar el email. Usa «Ver credenciales» y comparte manualmente.',
+          tone: 'warning',
+        });
       }
     },
-    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al reenviar'),
+    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al reenviar email'),
+  });
+
+  const resetCredentialsMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { action: 'reset_credentials', email: email.trim().toLowerCase(), send_email: false },
+      });
+      const message = await parseEdgeFunctionError(error, data);
+      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
+        throw new Error(message);
+      }
+      return data as EdgeInviteResponse;
+    },
+    onSuccess: (data) => {
+      setBackendStale(isBackendStale(data));
+      setInviteError('');
+      setCredentialsCopied(false);
+      setCredentialsResult(toCredentialsResult(data));
+      setInviteNotice({
+        message: 'Nueva contraseña provisional generada. La contraseña anterior ya no sirve.',
+        tone: 'warning',
+      });
+    },
+    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al resetear contraseña'),
   });
 
   const revokeInviteMutation = useMutation({
@@ -327,9 +395,9 @@ export function UsersPage() {
 
   const openInvite = () => {
     setInviteError('');
-    setInviteSuccess('');
+    setInviteNotice(null);
     setInvitePassword(generateProvisionalPassword());
-    setSendInviteEmail(true);
+    setSendInviteEmail(false);
     setInviteRole(isSuperAdmin ? 'admin' : 'researcher');
     setInviteLaboratory(user?.laboratory || laboratoryOptions[0]?.slug || '');
     setShowInviteDialog(true);
@@ -433,10 +501,27 @@ export function UsersPage() {
               Solo los administradores pueden gestionar usuarios y roles.
             </div>
           )}
-          {inviteSuccess && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2">
+          {backendStale && canManageUsers && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              <strong>Backend desactualizado.</strong> Ejecuta{' '}
+              <code className="text-xs bg-red-100 px-1 rounded">supabase db push</code> y{' '}
+              <code className="text-xs bg-red-100 px-1 rounded">supabase functions deploy invite-user</code>.
+              Si no, seguirás recibiendo enlaces mágicos en lugar de contraseñas provisionales.
+            </div>
+          )}
+          {inviteNotice && (
+            <div className={`p-4 rounded-xl text-sm flex items-center gap-2 ${
+              inviteNotice.tone === 'success'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-amber-50 border border-amber-200 text-amber-800'
+            }`}>
               <Mail className="w-4 h-4 flex-shrink-0" />
-              {inviteSuccess}
+              {inviteNotice.message}
+            </div>
+          )}
+          {inviteError && canManageUsers && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              {inviteError}
             </div>
           )}
 
@@ -525,18 +610,43 @@ export function UsersPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
                       <button
                         type="button"
                         onClick={() => {
                           setInviteError('');
-                          resendInviteMutation.mutate(inv.email);
+                          getCredentialsMutation.mutate(inv.email);
                         }}
-                        disabled={resendInviteMutation.isPending}
+                        disabled={getCredentialsMutation.isPending}
+                        className="text-xs text-gray-600 hover:text-gray-800 flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        Ver credenciales
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInviteError('');
+                          resendEmailMutation.mutate(inv.email);
+                        }}
+                        disabled={resendEmailMutation.isPending}
                         className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-colors disabled:opacity-50"
                       >
                         <Mail className="w-3.5 h-3.5" />
-                        {resendInviteMutation.isPending ? 'Enviando...' : 'Reenviar credenciales'}
+                        {resendEmailMutation.isPending ? 'Enviando...' : 'Reenviar email'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm('¿Generar una contraseña nueva? La anterior dejará de funcionar.')) return;
+                          setInviteError('');
+                          resetCredentialsMutation.mutate(inv.email);
+                        }}
+                        disabled={resetCredentialsMutation.isPending}
+                        className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-amber-50 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        {resetCredentialsMutation.isPending ? 'Generando...' : 'Nueva contraseña'}
                       </button>
                       <button
                         type="button"
@@ -903,7 +1013,8 @@ export function UsersPage() {
               </span>
             </label>
             <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
-              El usuario iniciará sesión con esta contraseña y deberá cambiarla en el primer acceso.
+              El usuario debe iniciar sesión en <strong>/login</strong> con esta contraseña (no usar enlaces de correos antiguos).
+              Deberá cambiarla en el primer acceso.
             </p>
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setShowInviteDialog(false)} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
@@ -947,6 +1058,9 @@ export function UsersPage() {
                     : 'Comparte estas credenciales con el usuario manualmente.'}
                 </p>
               )}
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                El usuario debe entrar por la URL de login con esta contraseña. No use enlaces mágicos de invitaciones antiguas.
+              </p>
               <div className="space-y-2 text-sm">
                 <div>
                   <span className="text-gray-500">URL de acceso</span>

@@ -2,48 +2,55 @@
 
 CryoVault solo permite altas por administrador. El flujo es: **admin crea usuario con contraseña provisional** → usuario inicia sesión en `/login` → **cambia contraseña** en el primer acceso → accede al laboratorio.
 
+## Solo GitHub no basta
+
+El push a `main` despliega **solo el frontend** en GitHub Pages (workflow `.github/workflows/deploy.yml`).
+
+La Edge Function y las migraciones SQL **no se despliegan automáticamente**. Si no ejecutas los comandos de Supabase, seguirás recibiendo **enlaces mágicos** del código antiguo y la contraseña provisional del formulario **no funcionará**.
+
+```bash
+cd C:\Users\Usuario\Cryovault
+supabase login
+supabase link --project-ref <tu-project-ref>
+supabase db push
+supabase functions deploy invite-user
+```
+
+Configura secrets en **Dashboard → Edge Functions → invite-user → Secrets** (copiar de Authentication → SMTP):
+
+| Secret | Descripción |
+|--------|-------------|
+| `SMTP_HOST` | Host SMTP |
+| `SMTP_PORT` | `465` o `587` |
+| `SMTP_USER` | Usuario SMTP |
+| `SMTP_PASSWORD` | Contraseña SMTP |
+| `SMTP_FROM` | Remitente |
+| `PUBLIC_SITE_URL` | `https://tonestrife.github.io` |
+
 ## Flujo en la app
 
 1. Admin → **Usuarios** → **Crear usuario** → email, contraseña provisional, rol y laboratorio.
-2. Opcional: marcar **Enviar credenciales por email** (SMTP).
+2. Opcional: marcar **Enviar credenciales por email** (requiere SMTP en la Edge Function).
 3. Tras crear, el admin ve las credenciales en pantalla (copiar y compartir).
-4. El usuario inicia sesión con email + contraseña provisional.
+4. El usuario inicia sesión en `/login` con email + contraseña provisional.
 5. La app redirige a **Cambiar contraseña** (`/accept-invite`).
 6. Tras guardar la contraseña definitiva, accede al dashboard.
-7. En Usuarios, el usuario deja de aparecer en **pendientes de activación**.
 
 ## Edge Function `invite-user`
+
+Versión actual del backend: `provisioned-v2`. Si la app muestra aviso de backend desactualizado, redepliega la función.
 
 ### Acciones
 
 | Acción | Descripción |
 |--------|-------------|
-| `create` | Crea usuario en Auth + fila en `invites` + email opcional |
-| `reset_credentials` | Nueva contraseña provisional para usuario pendiente |
+| `create` | Crea usuario en Auth + fila en `invites` + guarda contraseña + email opcional |
+| `get_credentials` | Devuelve contraseña provisional guardada (solo pendientes) |
+| `resend_email` | Reenvía email con la **misma** contraseña |
+| `reset_credentials` | Genera contraseña **nueva**, actualiza Auth y `invites` |
 | `revoke` | Elimina invitación pendiente y usuario de Auth |
 
-### Secrets (Project Settings → Edge Functions)
-
-| Secret | Descripción |
-|--------|-------------|
-| `SUPABASE_URL` | Automático al desplegar |
-| `SUPABASE_ANON_KEY` | Automático |
-| `SUPABASE_SERVICE_ROLE_KEY` | Automático |
-| `PUBLIC_SITE_URL` | `https://tonestrife.github.io` |
-| `SMTP_HOST` | Copiar de Authentication → SMTP en Supabase Dashboard |
-| `SMTP_PORT` | `465` o `587` |
-| `SMTP_USER` | Usuario SMTP |
-| `SMTP_PASSWORD` | Contraseña SMTP |
-| `SMTP_FROM` | Remitente (ej. `noreply@tudominio.es`) |
-
-Los valores SMTP deben coincidir con los configurados en **Authentication → SMTP** del proyecto Supabase.
-
-### Despliegue
-
-```bash
-supabase db push
-supabase functions deploy invite-user
-```
+La contraseña provisional se guarda en `invites.temporary_password` (solo accesible vía Edge Function, no desde el cliente).
 
 ## Supabase Dashboard
 
@@ -55,32 +62,26 @@ supabase functions deploy invite-user
 | **Redirect URLs** | `https://tonestrife.github.io/Cryovault/accept-invite` |
 | | `http://localhost:5173/Cryovault/accept-invite` |
 
-Las redirect URLs de `accept-invite` siguen siendo necesarias para **recuperación de contraseña** (olvidé mi contraseña).
-
-### Email (Auth)
-
-- Activa el proveedor **Email** en Authentication → Providers.
-- Configura **SMTP** para correos de recuperación de contraseña.
-
-## Migración `complete_user_onboarding`
-
-La función RPC `complete_user_onboarding()` marca `invites.accepted_at` cuando el usuario completa el cambio de contraseña en el primer acceso. Está en la migración `20260520140000_017_provisioned_users.sql`.
+Las redirect URLs de `accept-invite` siguen siendo necesarias para **recuperación de contraseña**.
 
 ## Checklist de prueba
 
-- [ ] Admin crea usuario sin enviar email → ve credenciales en pantalla.
-- [ ] Usuario inicia sesión con contraseña provisional → pantalla «Cambiar contraseña».
-- [ ] Usuario guarda contraseña nueva → llega al dashboard.
-- [ ] Invitación desaparece de pendientes de activación.
-- [ ] Admin crea usuario con «Enviar por email» → correo recibido.
-- [ ] «Reenviar credenciales» genera nueva contraseña provisional.
-- [ ] «Revocar» elimina usuario pendiente.
+- [ ] `supabase db push` y `supabase functions deploy invite-user` ejecutados
+- [ ] Admin crea usuario sin email → ve credenciales en pantalla
+- [ ] «Ver credenciales» muestra la misma contraseña
+- [ ] Usuario inicia sesión en `/login` → pantalla «Cambiar contraseña»
+- [ ] «Reenviar email» no cambia la contraseña
+- [ ] «Nueva contraseña» sí la cambia y lo indica
+- [ ] Correo recibido contiene URL + contraseña (no enlace mágico)
 
 ## Errores frecuentes
 
 | Síntoma | Causa probable |
 |---------|----------------|
-| Email no enviado al crear usuario | Secrets SMTP no configurados en Edge Function |
-| Invalid login credentials | Contraseña provisional incorrecta o usuario revocado |
-| Perfil no asignado | Error en trigger `handle_new_user` (sin invitación/laboratorio) |
-| Usuario ya existe | Email duplicado en Auth |
+| Recibo email con enlace para «activar cuenta» | Edge Function **no desplegada** (código viejo en Supabase) |
+| Contraseña provisional no funciona | Backend viejo no creó usuario con esa contraseña |
+| Email no enviado | Secrets SMTP no configurados en Edge Function |
+| «Ver credenciales» falla | Usuario creado con flujo viejo (sin contraseña guardada) — revocar y recrear |
+| Aviso «Backend desactualizado» en Usuarios | Ejecutar `supabase functions deploy invite-user` |
+
+**Usuarios creados con el flujo antiguo:** revócalos y créalos de nuevo tras el despliegue.

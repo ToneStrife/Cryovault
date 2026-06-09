@@ -7,6 +7,8 @@ declare const Deno: {
   serve: (handler: (req: Request) => Response | Promise<Response>) => void;
 };
 
+const API_VERSION = 'provisioned-v2';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -16,7 +18,7 @@ const corsHeaders = {
 const PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 
 type InvitePayload = {
-  action?: 'create' | 'reset_credentials' | 'revoke';
+  action?: 'create' | 'reset_credentials' | 'resend_email' | 'get_credentials' | 'revoke';
   email?: string;
   role?: string;
   laboratory?: string;
@@ -32,7 +34,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
+    return json({ error: 'Method not allowed', version: API_VERSION }, 405);
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -40,12 +42,12 @@ Deno.serve(async (req) => {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-    return json({ error: 'Missing Supabase function environment variables' }, 500);
+    return json({ error: 'Missing Supabase function environment variables', version: API_VERSION }, 500);
   }
 
   const authHeader = req.headers.get('Authorization') || '';
   const token = authHeader.replace('Bearer ', '');
-  if (!token) return json({ error: 'Missing authorization token' }, 401);
+  if (!token) return json({ error: 'Missing authorization token', version: API_VERSION }, 401);
 
   const authClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
@@ -53,7 +55,7 @@ Deno.serve(async (req) => {
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !authData.user) return json({ error: 'Invalid session' }, 401);
+  if (authError || !authData.user) return json({ error: 'Invalid session', version: API_VERSION }, 401);
 
   const { data: inviter, error: profileError } = await adminClient
     .from('profiles')
@@ -61,13 +63,21 @@ Deno.serve(async (req) => {
     .eq('id', authData.user.id)
     .single();
 
-  if (profileError || !inviter) return json({ error: 'Inviter profile not found' }, 403);
+  if (profileError || !inviter) return json({ error: 'Inviter profile not found', version: API_VERSION }, 403);
 
   const payload = (await req.json()) as InvitePayload;
   const action = payload.action || 'create';
 
   if (action === 'reset_credentials') {
     return handleResetCredentials(adminClient, inviter, payload, req);
+  }
+
+  if (action === 'resend_email') {
+    return handleResendEmail(adminClient, inviter, payload, req);
+  }
+
+  if (action === 'get_credentials') {
+    return handleGetCredentials(adminClient, inviter, payload, req);
   }
 
   if (action === 'revoke') {
@@ -96,16 +106,53 @@ async function resolveRoleAndLab(
   const requestedLab = payload.laboratory?.trim();
 
   if (inviter.role === 'super_admin') {
-    if (!requestedLab) return json({ error: 'Selecciona un laboratorio' }, 400);
+    if (!requestedLab) return json({ error: 'Selecciona un laboratorio', version: API_VERSION }, 400);
     return { role: 'admin', laboratory: requestedLab };
   }
 
   if (inviter.role === 'admin') {
-    if (requestedRole === 'super_admin') return json({ error: 'No puedes invitar admin general' }, 403);
+    if (requestedRole === 'super_admin') return json({ error: 'No puedes invitar admin general', version: API_VERSION }, 403);
     return { role: requestedRole, laboratory: inviter.laboratory };
   }
 
-  return json({ error: 'No tienes permiso para gestionar usuarios' }, 403);
+  return json({ error: 'No tienes permiso para gestionar usuarios', version: API_VERSION }, 403);
+}
+
+function assertCanManageInvites(inviter: { role: string; laboratory: string }): Response | null {
+  if (inviter.role !== 'super_admin' && inviter.role !== 'admin') {
+    return json({ error: 'No tienes permiso para gestionar usuarios', version: API_VERSION }, 403);
+  }
+  return null;
+}
+
+async function findPendingInvite(
+  adminClient: ReturnType<typeof createClient>,
+  inviter: { role: string; laboratory: string },
+  email: string,
+) {
+  let query = adminClient
+    .from('invites')
+    .select('id, email, role, laboratory, temporary_password')
+    .eq('email', email)
+    .is('accepted_at', null);
+
+  if (inviter.role === 'admin') {
+    query = query.eq('laboratory', inviter.laboratory);
+  }
+
+  return query.maybeSingle();
+}
+
+async function saveTemporaryPassword(
+  adminClient: ReturnType<typeof createClient>,
+  inviteId: string,
+  temporaryPassword: string,
+) {
+  const { error } = await adminClient
+    .from('invites')
+    .update({ temporary_password: temporaryPassword })
+    .eq('id', inviteId);
+  if (error) throw new Error(error.message);
 }
 
 async function trySendEmail(
@@ -139,7 +186,7 @@ async function handleCreate(
   req: Request,
 ) {
   const email = payload.email?.trim().toLowerCase();
-  if (!email || !email.includes('@')) return json({ error: 'Email inválido' }, 400);
+  if (!email || !email.includes('@')) return json({ error: 'Email inválido', version: API_VERSION }, 400);
 
   const roleLab = await resolveRoleAndLab(inviter, payload);
   if (roleLab instanceof Response) return roleLab;
@@ -151,7 +198,7 @@ async function handleCreate(
     .eq('slug', laboratory)
     .maybeSingle();
 
-  if (labError || !lab) return json({ error: 'Laboratorio no encontrado' }, 400);
+  if (labError || !lab) return json({ error: 'Laboratorio no encontrado', version: API_VERSION }, 400);
 
   const { data: existingProfile } = await adminClient
     .from('profiles')
@@ -159,14 +206,14 @@ async function handleCreate(
     .eq('email', email)
     .maybeSingle();
 
-  if (existingProfile) return json({ error: 'Ya existe un usuario con este email' }, 400);
+  if (existingProfile) return json({ error: 'Ya existe un usuario con este email', version: API_VERSION }, 400);
 
   let temporaryPassword = payload.password?.trim() || '';
   if (!temporaryPassword) {
     temporaryPassword = generateTemporaryPassword();
   } else {
     const passwordError = validatePassword(temporaryPassword);
-    if (passwordError) return json({ error: passwordError }, 400);
+    if (passwordError) return json({ error: passwordError, version: API_VERSION }, 400);
   }
 
   const userMeta = {
@@ -184,17 +231,22 @@ async function handleCreate(
     .is('accepted_at', null)
     .maybeSingle();
 
-  if (existingInvite?.id) {
+  let inviteId = existingInvite?.id;
+
+  if (inviteId) {
     const { error } = await adminClient
       .from('invites')
-      .update({ role, invited_by: inviterId })
-      .eq('id', existingInvite.id);
-    if (error) return json({ error: error.message }, 400);
+      .update({ role, invited_by: inviterId, temporary_password: temporaryPassword })
+      .eq('id', inviteId);
+    if (error) return json({ error: error.message, version: API_VERSION }, 400);
   } else {
-    const { error } = await adminClient
+    const { data: inserted, error } = await adminClient
       .from('invites')
-      .insert([{ email, role, laboratory, invited_by: inviterId }]);
-    if (error) return json({ error: error.message }, 400);
+      .insert([{ email, role, laboratory, invited_by: inviterId, temporary_password: temporaryPassword }])
+      .select('id')
+      .single();
+    if (error) return json({ error: error.message, version: API_VERSION }, 400);
+    inviteId = inserted.id;
   }
 
   const { data: createdUser, error: createError } = await adminClient.auth.admin.createUser({
@@ -206,7 +258,7 @@ async function handleCreate(
 
   if (createError) {
     await adminClient.from('invites').delete().eq('email', email).is('accepted_at', null);
-    return json({ error: createError.message }, 400);
+    return json({ error: createError.message, version: API_VERSION }, 400);
   }
 
   const emailResult = await trySendEmail(req, email, temporaryPassword, payload.send_email === true);
@@ -214,10 +266,74 @@ async function handleCreate(
   return json({
     ok: true,
     action: 'create',
+    version: API_VERSION,
     email,
     temporary_password: temporaryPassword,
     login_url: getLoginUrl(req),
     user_id: createdUser.user?.id,
+    invite_id: inviteId,
+    ...emailResult,
+  });
+}
+
+async function handleGetCredentials(
+  adminClient: ReturnType<typeof createClient>,
+  inviter: { role: string; laboratory: string },
+  payload: InvitePayload,
+  req: Request,
+) {
+  const denied = assertCanManageInvites(inviter);
+  if (denied) return denied;
+
+  const email = payload.email?.trim().toLowerCase();
+  if (!email) return json({ error: 'Email inválido', version: API_VERSION }, 400);
+
+  const { data: invite, error: inviteErr } = await findPendingInvite(adminClient, inviter, email);
+  if (inviteErr) return json({ error: inviteErr.message, version: API_VERSION }, 400);
+  if (!invite) return json({ error: 'No hay usuario pendiente de activación para este email', version: API_VERSION }, 404);
+  if (!invite.temporary_password) {
+    return json({ error: 'No hay contraseña provisional guardada. Usa «Nueva contraseña».', version: API_VERSION }, 404);
+  }
+
+  return json({
+    ok: true,
+    action: 'get_credentials',
+    version: API_VERSION,
+    email: invite.email,
+    temporary_password: invite.temporary_password,
+    login_url: getLoginUrl(req),
+    email_sent: false,
+  });
+}
+
+async function handleResendEmail(
+  adminClient: ReturnType<typeof createClient>,
+  inviter: { role: string; laboratory: string },
+  payload: InvitePayload,
+  req: Request,
+) {
+  const denied = assertCanManageInvites(inviter);
+  if (denied) return denied;
+
+  const email = payload.email?.trim().toLowerCase();
+  if (!email) return json({ error: 'Email inválido', version: API_VERSION }, 400);
+
+  const { data: invite, error: inviteErr } = await findPendingInvite(adminClient, inviter, email);
+  if (inviteErr) return json({ error: inviteErr.message, version: API_VERSION }, 400);
+  if (!invite) return json({ error: 'No hay usuario pendiente de activación para este email', version: API_VERSION }, 404);
+  if (!invite.temporary_password) {
+    return json({ error: 'No hay contraseña provisional guardada. Usa «Nueva contraseña».', version: API_VERSION }, 404);
+  }
+
+  const emailResult = await trySendEmail(req, email, invite.temporary_password, true);
+
+  return json({
+    ok: true,
+    action: 'resend_email',
+    version: API_VERSION,
+    email: invite.email,
+    temporary_password: invite.temporary_password,
+    login_url: getLoginUrl(req),
     ...emailResult,
   });
 }
@@ -228,26 +344,15 @@ async function handleResetCredentials(
   payload: InvitePayload,
   req: Request,
 ) {
-  if (inviter.role !== 'super_admin' && inviter.role !== 'admin') {
-    return json({ error: 'No tienes permiso para reenviar credenciales' }, 403);
-  }
+  const denied = assertCanManageInvites(inviter);
+  if (denied) return denied;
 
   const email = payload.email?.trim().toLowerCase();
-  if (!email) return json({ error: 'Email inválido' }, 400);
+  if (!email) return json({ error: 'Email inválido', version: API_VERSION }, 400);
 
-  let inviteQuery = adminClient
-    .from('invites')
-    .select('id, email, role, laboratory')
-    .eq('email', email)
-    .is('accepted_at', null);
-
-  if (inviter.role === 'admin') {
-    inviteQuery = inviteQuery.eq('laboratory', inviter.laboratory);
-  }
-
-  const { data: invite, error: inviteErr } = await inviteQuery.maybeSingle();
-  if (inviteErr) return json({ error: inviteErr.message }, 400);
-  if (!invite) return json({ error: 'No hay usuario pendiente de activación para este email' }, 404);
+  const { data: invite, error: inviteErr } = await findPendingInvite(adminClient, inviter, email);
+  if (inviteErr) return json({ error: inviteErr.message, version: API_VERSION }, 400);
+  if (!invite) return json({ error: 'No hay usuario pendiente de activación para este email', version: API_VERSION }, 404);
 
   const { data: profile } = await adminClient
     .from('profiles')
@@ -255,18 +360,18 @@ async function handleResetCredentials(
     .eq('email', email)
     .maybeSingle();
 
-  if (!profile) return json({ error: 'Usuario no encontrado' }, 404);
+  if (!profile) return json({ error: 'Usuario no encontrado', version: API_VERSION }, 404);
 
   let temporaryPassword = payload.password?.trim() || '';
   if (!temporaryPassword) {
     temporaryPassword = generateTemporaryPassword();
   } else {
     const passwordError = validatePassword(temporaryPassword);
-    if (passwordError) return json({ error: passwordError }, 400);
+    if (passwordError) return json({ error: passwordError, version: API_VERSION }, 400);
   }
 
   const { data: authUser, error: getUserError } = await adminClient.auth.admin.getUserById(profile.id);
-  if (getUserError || !authUser.user) return json({ error: 'Usuario de autenticación no encontrado' }, 404);
+  if (getUserError || !authUser.user) return json({ error: 'Usuario de autenticación no encontrado', version: API_VERSION }, 404);
 
   const { error: updateError } = await adminClient.auth.admin.updateUserById(profile.id, {
     password: temporaryPassword,
@@ -276,7 +381,14 @@ async function handleResetCredentials(
     },
   });
 
-  if (updateError) return json({ error: updateError.message }, 400);
+  if (updateError) return json({ error: updateError.message, version: API_VERSION }, 400);
+
+  try {
+    await saveTemporaryPassword(adminClient, invite.id, temporaryPassword);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error al guardar contraseña';
+    return json({ error: message, version: API_VERSION }, 400);
+  }
 
   const emailResult = await trySendEmail(
     req,
@@ -288,6 +400,7 @@ async function handleResetCredentials(
   return json({
     ok: true,
     action: 'reset_credentials',
+    version: API_VERSION,
     email,
     temporary_password: temporaryPassword,
     login_url: getLoginUrl(req),
@@ -300,12 +413,11 @@ async function handleRevoke(
   inviter: { role: string; laboratory: string },
   payload: InvitePayload,
 ) {
-  if (inviter.role !== 'super_admin' && inviter.role !== 'admin') {
-    return json({ error: 'No tienes permiso para revocar usuarios' }, 403);
-  }
+  const denied = assertCanManageInvites(inviter);
+  if (denied) return denied;
 
   const inviteId = payload.invite_id;
-  if (!inviteId) return json({ error: 'ID de invitación requerido' }, 400);
+  if (!inviteId) return json({ error: 'ID de invitación requerido', version: API_VERSION }, 403);
 
   let inviteQuery = adminClient
     .from('invites')
@@ -318,8 +430,8 @@ async function handleRevoke(
   }
 
   const { data: invite, error: inviteErr } = await inviteQuery.maybeSingle();
-  if (inviteErr) return json({ error: inviteErr.message }, 400);
-  if (!invite) return json({ error: 'Invitación no encontrada' }, 404);
+  if (inviteErr) return json({ error: inviteErr.message, version: API_VERSION }, 400);
+  if (!invite) return json({ error: 'Invitación no encontrada', version: API_VERSION }, 404);
 
   const { data: profile } = await adminClient
     .from('profiles')
@@ -329,13 +441,13 @@ async function handleRevoke(
 
   if (profile?.id) {
     const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(profile.id);
-    if (deleteUserError) return json({ error: deleteUserError.message }, 400);
+    if (deleteUserError) return json({ error: deleteUserError.message, version: API_VERSION }, 400);
   }
 
   const { error: deleteInviteError } = await adminClient.from('invites').delete().eq('id', inviteId);
-  if (deleteInviteError) return json({ error: deleteInviteError.message }, 400);
+  if (deleteInviteError) return json({ error: deleteInviteError.message, version: API_VERSION }, 400);
 
-  return json({ ok: true, action: 'revoke' });
+  return json({ ok: true, action: 'revoke', version: API_VERSION });
 }
 
 function json(body: Record<string, unknown>, status = 200) {
