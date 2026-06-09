@@ -8,12 +8,22 @@ El push a `main` despliega **solo el frontend** en GitHub Pages (workflow `.gith
 
 La Edge Function y las migraciones SQL **no se despliegan automáticamente**. Si no ejecutas los comandos de Supabase, seguirás recibiendo **enlaces mágicos** del código antiguo y la contraseña provisional del formulario **no funcionará**.
 
+### Opción A — SQL Editor (rápido si no tienes CLI)
+
+1. Abre [Supabase Dashboard](https://supabase.com/dashboard) → tu proyecto → **SQL Editor**.
+2. Copia y ejecuta el contenido de [`supabase/scripts/apply-provisioning-migrations.sql`](../supabase/scripts/apply-provisioning-migrations.sql).
+3. Espera unos segundos y vuelve a crear el usuario.
+
+Si ves el error *Could not find the 'temporary_password' column of 'invites' in the schema cache*, es porque **falta este paso**.
+
+### Opción B — Supabase CLI
+
 ```bash
 cd C:\Users\Usuario\Cryovault
-supabase login
-supabase link --project-ref <tu-project-ref>
-supabase db push
-supabase functions deploy invite-user
+npx supabase login
+npx supabase link --project-ref yyfthcebyqylhjkrzsph
+npx supabase db push
+npx supabase functions deploy invite-user
 ```
 
 Configura secrets en **Dashboard → Edge Functions → invite-user → Secrets** (copiar de Authentication → SMTP):
@@ -78,6 +88,7 @@ Las redirect URLs de `accept-invite` siguen siendo necesarias para **recuperaci�
 
 | Síntoma | Causa probable |
 |---------|----------------|
+| `temporary_password` column not in schema cache | Ejecutar [`apply-provisioning-migrations.sql`](../supabase/scripts/apply-provisioning-migrations.sql) en SQL Editor |
 | Recibo email con enlace para «activar cuenta» | Edge Function **no desplegada** (código viejo en Supabase) |
 | Contraseña provisional no funciona | Backend viejo no creó usuario con esa contraseña |
 | Email no enviado | Secrets SMTP no configurados en Edge Function |
