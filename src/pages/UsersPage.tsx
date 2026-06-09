@@ -8,10 +8,38 @@ import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Users, Shield, ChevronDown, UserPlus, Mail, Clock, X, Check, KeyRound, Building2 } from 'lucide-react';
+import { Users, Shield, ChevronDown, UserPlus, Mail, Clock, X, Check, KeyRound, Building2, Copy, RefreshCw } from 'lucide-react';
 import type { Laboratory, Profile, UserRole } from '@/types';
 import { selectClass } from '@/lib/formStyles';
 import { parseEdgeFunctionError } from '@/lib/edgeFunction';
+import { appPath } from '@/lib/appUrl';
+import { Checkbox } from '@/components/ui/checkbox';
+
+const PROVISIONAL_PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+
+type CredentialsResult = {
+  email: string;
+  temporary_password: string;
+  login_url: string;
+  email_sent: boolean;
+  email_error?: string;
+};
+
+function generateProvisionalPassword(length = 12) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => PROVISIONAL_PASSWORD_CHARS[b % PROVISIONAL_PASSWORD_CHARS.length]).join('');
+}
+
+function formatCredentialsText(result: CredentialsResult) {
+  return [
+    'Acceso a CryoVault',
+    `URL: ${result.login_url}`,
+    `Email: ${result.email}`,
+    `Contraseña provisional: ${result.temporary_password}`,
+    'Deberás cambiar la contraseña en el primer acceso.',
+  ].join('\n');
+}
 
 const LAB_ROLES: UserRole[] = ['admin', 'researcher', 'technician', 'read_only'];
 
@@ -77,6 +105,10 @@ export function UsersPage() {
   const [inviteLaboratory, setInviteLaboratory] = useState('');
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
+  const [invitePassword, setInvitePassword] = useState('');
+  const [sendInviteEmail, setSendInviteEmail] = useState(true);
+  const [credentialsResult, setCredentialsResult] = useState<CredentialsResult | null>(null);
+  const [credentialsCopied, setCredentialsCopied] = useState(false);
   const [showLabDialog, setShowLabDialog] = useState(false);
   const [labName, setLabName] = useState('');
   const [labError, setLabError] = useState('');
@@ -184,14 +216,95 @@ export function UsersPage() {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: async ({ email, role, laboratory }: { email: string; role: UserRole; laboratory: string }) => {
+    mutationFn: async ({
+      email,
+      role,
+      laboratory,
+      password,
+      sendEmail,
+    }: {
+      email: string;
+      role: UserRole;
+      laboratory: string;
+      password: string;
+      sendEmail: boolean;
+    }) => {
       const { data, error } = await supabase.functions.invoke('invite-user', {
         body: {
-          action: 'invite',
+          action: 'create',
           email: email.trim().toLowerCase(),
           role,
           laboratory,
+          password,
+          send_email: sendEmail,
         },
+      });
+      const message = await parseEdgeFunctionError(error, data);
+      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
+        throw new Error(message);
+      }
+      return data as CredentialsResult;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invites'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setShowInviteDialog(false);
+      setInviteEmail('');
+      setInvitePassword('');
+      setInviteRole('researcher');
+      setInviteLaboratory(user?.laboratory || '');
+      setInviteError('');
+      setCredentialsCopied(false);
+      setCredentialsResult({
+        email: data.email,
+        temporary_password: data.temporary_password,
+        login_url: data.login_url || appPath('/login'),
+        email_sent: !!data.email_sent,
+        email_error: data.email_error,
+      });
+      if (data.email_sent) {
+        setInviteSuccess('Usuario creado y credenciales enviadas por email.');
+      } else {
+        setInviteSuccess('Usuario creado. Comparte las credenciales con el usuario.');
+      }
+    },
+    onError: (e: any) => setInviteError(e.message),
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { action: 'reset_credentials', email: email.trim().toLowerCase(), send_email: true },
+      });
+      const message = await parseEdgeFunctionError(error, data);
+      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
+        throw new Error(message);
+      }
+      return data as CredentialsResult;
+    },
+    onSuccess: (data) => {
+      setInviteError('');
+      setCredentialsCopied(false);
+      setCredentialsResult({
+        email: data.email,
+        temporary_password: data.temporary_password,
+        login_url: data.login_url || appPath('/login'),
+        email_sent: !!data.email_sent,
+        email_error: data.email_error,
+      });
+      if (data.email_sent) {
+        setInviteSuccess('Nueva contraseña provisional generada y enviada por email.');
+      } else {
+        setInviteSuccess('Nueva contraseña provisional generada. Compártela con el usuario.');
+      }
+    },
+    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al reenviar'),
+  });
+
+  const revokeInviteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { action: 'revoke', invite_id: id },
       });
       const message = await parseEdgeFunctionError(error, data);
       if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
@@ -200,38 +313,9 @@ export function UsersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invites'] });
-      setShowInviteDialog(false);
-      setInviteEmail('');
-      setInviteRole('researcher');
-      setInviteLaboratory(user?.laboratory || '');
-      setInviteError('');
-      setInviteSuccess('Invitación enviada. El usuario recibirá un enlace por email para activar la cuenta.');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (e: any) => setInviteError(e.message),
-  });
-
-  const resendInviteMutation = useMutation({
-    mutationFn: async (email: string) => {
-      const { data, error } = await supabase.functions.invoke('invite-user', {
-        body: { action: 'resend', email: email.trim().toLowerCase() },
-      });
-      const message = await parseEdgeFunctionError(error, data);
-      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
-        throw new Error(message);
-      }
-    },
-    onSuccess: () => {
-      setInviteSuccess('Enlace mágico reenviado por email.');
-    },
-    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al reenviar'),
-  });
-
-  const revokeInviteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await (supabase.from('invites') as any).delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invites'] }),
+    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al revocar'),
   });
 
   const openEdit = (u: Profile) => {
@@ -244,9 +328,21 @@ export function UsersPage() {
   const openInvite = () => {
     setInviteError('');
     setInviteSuccess('');
+    setInvitePassword(generateProvisionalPassword());
+    setSendInviteEmail(true);
     setInviteRole(isSuperAdmin ? 'admin' : 'researcher');
     setInviteLaboratory(user?.laboratory || laboratoryOptions[0]?.slug || '');
     setShowInviteDialog(true);
+  };
+
+  const copyCredentials = async () => {
+    if (!credentialsResult) return;
+    try {
+      await navigator.clipboard.writeText(formatCredentialsText(credentialsResult));
+      setCredentialsCopied(true);
+    } catch {
+      setCredentialsCopied(false);
+    }
   };
 
   const openPermEdit = (u: Profile) => {
@@ -323,7 +419,7 @@ export function UsersPage() {
                   </Button>
                 )}
                 <Button onClick={openInvite} className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white">
-                  <UserPlus className="w-4 h-4" /> {isSuperAdmin ? 'Invitar admin' : 'Invitar usuario'}
+                  <UserPlus className="w-4 h-4" /> {isSuperAdmin ? 'Crear admin' : 'Crear usuario'}
                 </Button>
               </div>
             )}
@@ -407,7 +503,7 @@ export function UsersPage() {
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
                 <Mail className="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-semibold text-gray-700">Invitaciones pendientes</span>
+                <span className="text-sm font-semibold text-gray-700">Usuarios pendientes de activación</span>
                 <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingInvites.length}</span>
               </div>
               <div className="divide-y divide-gray-50">
@@ -440,7 +536,7 @@ export function UsersPage() {
                         className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-colors disabled:opacity-50"
                       >
                         <Mail className="w-3.5 h-3.5" />
-                        {resendInviteMutation.isPending ? 'Enviando...' : 'Reenviar enlace'}
+                        {resendInviteMutation.isPending ? 'Enviando...' : 'Reenviar credenciales'}
                       </button>
                       <button
                         type="button"
@@ -731,7 +827,7 @@ export function UsersPage() {
 
       <Dialog open={showInviteDialog} onOpenChange={(open) => !open && setShowInviteDialog(false)}>
         <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
-          <DialogHeader><DialogTitle>{isSuperAdmin ? 'Invitar administrador' : 'Invitar usuario'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{isSuperAdmin ? 'Crear administrador' : 'Crear usuario'}</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             {inviteError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{inviteError}</p>}
             <div className="space-y-1">
@@ -740,6 +836,27 @@ export function UsersPage() {
                 type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="usuario@laboratorio.es" autoFocus
               />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Contraseña provisional</label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={invitePassword}
+                  onChange={(e) => setInvitePassword(e.target.value)}
+                  placeholder="Mínimo 8 caracteres"
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setInvitePassword(generateProvisionalPassword())}
+                  className="border-gray-300 text-gray-700 shrink-0"
+                  title="Generar contraseña"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             {isSuperAdmin ? (
               <div className="space-y-1">
@@ -775,25 +892,86 @@ export function UsersPage() {
                 <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-mono">{user?.laboratory}</p>
               )}
             </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <Checkbox
+                checked={sendInviteEmail}
+                onCheckedChange={(checked) => setSendInviteEmail(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-600">
+                Enviar credenciales por email (requiere SMTP configurado en la Edge Function)
+              </span>
+            </label>
             <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
-              Se enviará un email para que el usuario cree su contraseña y acceda al sistema.
+              El usuario iniciará sesión con esta contraseña y deberá cambiarla en el primer acceso.
             </p>
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setShowInviteDialog(false)} className="flex-1 border-gray-300 text-gray-700">Cancelar</Button>
               <Button
-                disabled={inviteMutation.isPending || !inviteEmail.trim() || !(isSuperAdmin ? inviteLaboratory : user?.laboratory)}
+                disabled={inviteMutation.isPending || !inviteEmail.trim() || invitePassword.length < 8 || !(isSuperAdmin ? inviteLaboratory : user?.laboratory)}
                 onClick={() => {
                   if (!inviteEmail.trim()) return setInviteError('El email es obligatorio');
+                  if (invitePassword.length < 8) return setInviteError('La contraseña debe tener al menos 8 caracteres');
                   const laboratory = isSuperAdmin ? inviteLaboratory : user!.laboratory;
                   if (!laboratory) return setInviteError('Selecciona un laboratorio');
-                  inviteMutation.mutate({ email: inviteEmail, role: isSuperAdmin ? 'admin' : inviteRole, laboratory });
+                  inviteMutation.mutate({
+                    email: inviteEmail,
+                    role: isSuperAdmin ? 'admin' : inviteRole,
+                    laboratory,
+                    password: invitePassword,
+                    sendEmail: sendInviteEmail,
+                  });
                 }}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
               >
-                {inviteMutation.isPending ? 'Enviando...' : 'Enviar invitación'}
+                {inviteMutation.isPending ? 'Creando...' : 'Crear usuario'}
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!credentialsResult} onOpenChange={(open) => !open && setCredentialsResult(null)}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
+          <DialogHeader><DialogTitle>Credenciales del usuario</DialogTitle></DialogHeader>
+          {credentialsResult && (
+            <div className="space-y-4 mt-2">
+              {credentialsResult.email_sent ? (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                  Las credenciales se enviaron por email correctamente.
+                </p>
+              ) : (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  {credentialsResult.email_error
+                    ? `No se pudo enviar el email: ${credentialsResult.email_error}`
+                    : 'Comparte estas credenciales con el usuario manualmente.'}
+                </p>
+              )}
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-gray-500">URL de acceso</span>
+                  <p className="font-mono text-gray-900 break-all">{credentialsResult.login_url}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Email</span>
+                  <p className="font-mono text-gray-900">{credentialsResult.email}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Contraseña provisional</span>
+                  <p className="font-mono text-gray-900">{credentialsResult.temporary_password}</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setCredentialsResult(null)} className="flex-1 border-gray-300 text-gray-700">
+                  Cerrar
+                </Button>
+                <Button onClick={copyCredentials} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
+                  <Copy className="w-4 h-4" />
+                  {credentialsCopied ? 'Copiado' : 'Copiar credenciales'}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </AppLayout>

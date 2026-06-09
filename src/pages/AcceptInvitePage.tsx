@@ -105,7 +105,7 @@ export function AcceptInvitePage() {
         }
         fail(
           lastError ||
-            'No se pudo validar el enlace. Pide a un administrador que te reenvíe la invitación.',
+            'No se pudo validar la sesión. Inicia sesión con tu contraseña provisional o pide nuevas credenciales al administrador.',
         );
       }, WAIT_MS);
 
@@ -169,6 +169,9 @@ export function AcceptInvitePage() {
         );
       }
 
+      const { error: onboardingError } = await supabase.rpc('complete_user_onboarding');
+      if (onboardingError) throw onboardingError;
+
       window.history.replaceState(null, '', window.location.pathname);
       setPageState('done');
       navigate('/dashboard', { replace: true });
@@ -180,13 +183,13 @@ export function AcceptInvitePage() {
   };
 
   const title =
-    flowType === 'recovery' ? 'Nueva contraseña' : 'Activar tu cuenta';
+    flowType === 'recovery' ? 'Nueva contraseña' : 'Cambiar contraseña';
   const subtitle =
     flowType === 'recovery'
       ? 'Elige una contraseña nueva para tu cuenta'
-      : 'Crea tu contraseña para acceder a CryoVault';
+      : 'Por seguridad, elige una contraseña nueva para acceder a CryoVault';
   const submitLabel =
-    flowType === 'recovery' ? 'Guardar contraseña' : 'Activar cuenta';
+    flowType === 'recovery' ? 'Guardar contraseña' : 'Guardar contraseña';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 flex items-center justify-center p-4">

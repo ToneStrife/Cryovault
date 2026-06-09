@@ -1,21 +1,38 @@
 # invite-user
 
-Envía invitaciones por email y reenvía enlaces mágicos para invitaciones pendientes.
+Crea usuarios con contraseña provisional y opcionalmente envía credenciales por SMTP.
 
 ## Acciones (`body.action`)
 
 | Acción | Descripción |
 |--------|-------------|
-| `invite` (default) | `inviteUserByEmail` + fila en `invites` |
-| `resend` | `signInWithOtp` (magic link) para email con invitación pendiente |
+| `create` (default) | Inserta en `invites` + `auth.admin.createUser` + email opcional |
+| `reset_credentials` | Nueva contraseña provisional para usuario pendiente de activación |
+| `revoke` | Elimina invitación pendiente y usuario de Auth si existe |
 
 ## Secrets
 
-- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-- `PUBLIC_SITE_URL` — origen del sitio sin barra final, p. ej. `https://tonestrife.github.io`
+| Secret | Descripción |
+|--------|-------------|
+| `SUPABASE_URL` | (automático al desplegar) |
+| `SUPABASE_ANON_KEY` | (automático) |
+| `SUPABASE_SERVICE_ROLE_KEY` | (automático) |
+| `PUBLIC_SITE_URL` | `https://tonestrife.github.io` |
+| `SMTP_HOST` | Mismo host que Auth → SMTP en Supabase Dashboard |
+| `SMTP_PORT` | `465` o `587` |
+| `SMTP_USER` | Usuario SMTP |
+| `SMTP_PASSWORD` | Contraseña SMTP |
+| `SMTP_FROM` | Remitente (ej. `noreply@tudominio.es`) |
 
-## Redirect URLs (Supabase Dashboard)
+## Ejemplo `create`
 
-Ver [docs/INVITE_SETUP.md](../../../docs/INVITE_SETUP.md).
-
-Redeploy: `supabase functions deploy invite-user`
+```json
+{
+  "action": "create",
+  "email": "usuario@lab.es",
+  "role": "researcher",
+  "laboratory": "mi_lab",
+  "password": "TempPass123",
+  "send_email": true
+}
+```

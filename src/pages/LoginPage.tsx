@@ -117,7 +117,7 @@ export function LoginPage() {
           </form>
 
           <p className="mt-5 text-center text-xs text-gray-500">
-            ¿Primera vez? Usa el enlace del email de invitación que te envió tu administrador.
+            ¿Primera vez? Usa la contraseña provisional que te envió tu administrador. Deberás cambiarla al entrar.
           </p>
         </div>
       </div>
