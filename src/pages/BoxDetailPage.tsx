@@ -240,6 +240,7 @@ export function BoxDetailPage() {
     isCheckingOutBox,
     isReturningBox,
     moveSampleAsync,
+    removeFromBoxAsync,
   } = useSampleCheckout();
   const sampleTypes = settingsOptions.sampleTypes;
   const statuses = settingsOptions.sampleStatuses;
@@ -325,6 +326,7 @@ export function BoxDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['box', boxId] });
     queryClient.invalidateQueries({ queryKey: ['boxes', freezerId] });
     queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
+    queryClient.invalidateQueries({ queryKey: ['samples-search'] });
   };
 
   // Spreadsheet state — full grid, every position
@@ -562,11 +564,8 @@ export function BoxDetailPage() {
   });
 
   const removeSampleMutation = useMutation({
-    mutationFn: async (sampleId: string) => {
-      const { error } = await (supabase.from('samples') as any)
-        .update({ box_id: null, position_row: null, position_column: null, position_label: null })
-        .eq('id', sampleId);
-      if (error) throw error;
+    mutationFn: async (sample: Sample) => {
+      await removeFromBoxAsync(sample);
     },
     onSuccess: () => {
       invalidateBoxData();
@@ -576,12 +575,11 @@ export function BoxDetailPage() {
   });
 
   const removeSelectedFromBoxMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      if (ids.length === 0) return;
-      const { error } = await (supabase.from('samples') as any)
-        .update({ box_id: null, position_row: null, position_column: null, position_label: null })
-        .in('id', ids);
-      if (error) throw error;
+    mutationFn: async (samplesToRemove: Sample[]) => {
+      if (samplesToRemove.length === 0) return;
+      for (const sample of samplesToRemove) {
+        await removeFromBoxAsync(sample);
+      }
     },
     onSuccess: () => {
       invalidateBoxData();
@@ -1485,7 +1483,9 @@ export function BoxDetailPage() {
                       <Button
                         onClick={() => {
                           if (confirm(`¿Quitar ${selectedBoxIds.length} muestra${selectedBoxIds.length !== 1 ? 's' : ''} de esta caja?`)) {
-                            removeSelectedFromBoxMutation.mutate(selectedBoxIds);
+                            removeSelectedFromBoxMutation.mutate(
+                              sortedSamples.filter((s) => selectedBoxIds.includes(s.id)),
+                            );
                           }
                         }}
                         size="sm"
@@ -1922,7 +1922,7 @@ export function BoxDetailPage() {
                       Sacar
                     </Button>
                   )}
-                  <Button variant="ghost" onClick={() => { if (confirm('¿Quitar de la caja?')) removeSampleMutation.mutate(selectedSample.id); }} className="text-red-500 hover:text-red-600 text-sm">Quitar</Button>
+                  <Button variant="ghost" onClick={() => { if (selectedSample && confirm('¿Quitar de la caja?')) removeSampleMutation.mutate(selectedSample); }} className="text-red-500 hover:text-red-600 text-sm">Quitar</Button>
                 </div>
               </div>
             </div>
@@ -2250,7 +2250,9 @@ export function BoxDetailPage() {
             icon: <X className="w-4 h-4" />,
             onClick: () => {
               if (confirm(`¿Quitar ${selectedBoxIds.length} muestra(s) de esta caja?`)) {
-                removeSelectedFromBoxMutation.mutate(selectedBoxIds);
+                removeSelectedFromBoxMutation.mutate(
+                  sortedSamples.filter((s) => selectedBoxIds.includes(s.id)),
+                );
               }
             },
             className: 'text-red-600',

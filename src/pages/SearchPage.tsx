@@ -12,6 +12,8 @@ import { SAMPLE_STATUS_LABEL, SAMPLE_TYPE_LABEL, labelOption, useSettingsOptions
 import { useSampleCheckout } from '@/hooks/useSampleCheckout';
 import { PlaceSampleDialog } from '@/components/PlaceSampleDialog';
 import { ReturnSampleDialog } from '@/components/ReturnSampleDialog';
+import { TransferSampleDialog } from '@/components/TransferSampleDialog';
+import { fetchAllSamples } from '@/lib/fetchAllRows';
 import type { Sample, SampleType, SampleStatus, UnitType, Freezer } from '@/types';
 import { PAGE_HEADER, PAGE_BODY, DIALOG_MOBILE } from '@/lib/layout';
 import { SampleResultCard } from '@/components/samples/SampleResultCard';
@@ -51,6 +53,8 @@ export function SearchPage() {
   const [showPlaceDialog, setShowPlaceDialog] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Sample | null>(null);
   const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<Sample | null>(null);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [q, setQ] = useState('');
   const [copiedSampleId, setCopiedSampleId] = useState<string | null>(null);
@@ -90,13 +94,12 @@ export function SearchPage() {
   });
 
   const { data: samples = [], isLoading } = useQuery({
-    queryKey: ['samples-search'],
+    queryKey: ['samples-search', showDeleted],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('samples') as any)
-        .select('*, box_id, deleted_at')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data as (Sample & { deleted_at: string | null })[];
+      return fetchAllSamples<Sample & { deleted_at: string | null }>(
+        '*, box_id, deleted_at',
+        { includeDeleted: showDeleted },
+      );
     },
     enabled: !!user,
   });
@@ -113,7 +116,10 @@ export function SearchPage() {
   const { data: boxes = [] } = useQuery({
     queryKey: ['boxes-search'],
     queryFn: async () => {
-      const { data } = await supabase.from('boxes').select('id, name, freezer_id').order('name');
+      const { data } = await (supabase.from('boxes') as any)
+        .select('id, name, freezer_id')
+        .is('deleted_at', null)
+        .order('name');
       return (data || []) as { id: string; name: string; freezer_id: string }[];
     },
     enabled: !!user,
@@ -156,7 +162,8 @@ export function SearchPage() {
         (s.patient_code || '').toLowerCase().includes(lq) ||
         (s.subject_code || '').toLowerCase().includes(lq) ||
         (s.project || '').toLowerCase().includes(lq) ||
-        (s.notes || '').toLowerCase().includes(lq)
+        (s.notes || '').toLowerCase().includes(lq) ||
+        (s.box_id && (boxMap[s.box_id]?.name || '').toLowerCase().includes(lq))
       )) return false;
       if (patientFilter && !(
         (s.patient_code || '').toLowerCase().includes(lp) ||
@@ -361,7 +368,7 @@ export function SearchPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Código de muestra, paciente, sujeto, proyecto, notas..."
+              placeholder="Código de muestra, paciente, caja, proyecto, notas..."
               className="pl-12 pr-12 py-4 text-base bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 rounded-xl shadow-sm"
               autoFocus
             />
@@ -523,7 +530,7 @@ export function SearchPage() {
           {/* Results header */}
           <div className="flex items-center justify-between mb-3 gap-3">
             <p className="text-gray-500 text-sm">
-              {isLoading ? 'Cargando...' : `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`}
+              {isLoading ? 'Cargando...' : `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}${samples.length > 0 ? ` · ${samples.length} en total` : ''}`}
             </p>
             {selected.size > 0 && (
               <div className="hidden md:flex items-center gap-2 flex-wrap">
@@ -601,10 +608,19 @@ export function SearchPage() {
                         ? [{ id: 'place', label: 'Colocar en caja', icon: <MapPin className="w-4 h-4 mr-2" />, onClick: () => { setPlaceTarget(s); setShowPlaceDialog(true); } }]
                         : []),
                       ...(!isDeleted && s.status === 'in_use' && s.box_id
-                        ? [{ id: 'return', label: 'Devolver', icon: <ArrowDownToLine className="w-4 h-4 mr-2" />, onClick: () => { setReturnTarget(s); setShowReturnDialog(true); } }]
+                        ? [
+                            { id: 'return', label: 'Devolver', icon: <ArrowDownToLine className="w-4 h-4 mr-2" />, onClick: () => { setReturnTarget(s); setShowReturnDialog(true); } },
+                            { id: 'transfer', label: 'Mover a otra caja', icon: <MapPin className="w-4 h-4 mr-2" />, onClick: () => { setTransferTarget(s); setShowTransferDialog(true); } },
+                          ]
+                        : []),
+                      ...(!isDeleted && s.status === 'in_use' && !s.box_id
+                        ? [{ id: 'place', label: 'Colocar en caja', icon: <MapPin className="w-4 h-4 mr-2" />, onClick: () => { setPlaceTarget(s); setShowPlaceDialog(true); } }]
                         : []),
                       ...(!isDeleted && s.status !== 'in_use' && s.box_id
-                        ? [{ id: 'checkout', label: 'Sacar', icon: <ArrowUpFromLine className="w-4 h-4 mr-2" />, onClick: () => { if (confirm('¿Sacar muestra?')) checkoutSample(s); } }]
+                        ? [
+                            { id: 'checkout', label: 'Sacar', icon: <ArrowUpFromLine className="w-4 h-4 mr-2" />, onClick: () => { if (confirm('¿Sacar muestra?')) checkoutSample(s); } },
+                            { id: 'transfer', label: 'Mover a otra caja', icon: <MapPin className="w-4 h-4 mr-2" />, onClick: () => { setTransferTarget(s); setShowTransferDialog(true); } },
+                          ]
                         : []),
                       ...(boxEntry && !isDeleted
                         ? [{ id: 'box', label: 'Ir a la caja', icon: <ArrowRight className="w-4 h-4 mr-2" />, onClick: () => navigate(boxPath(s.box_id!)) }]
@@ -716,24 +732,54 @@ export function SearchPage() {
                               </button>
                             )}
                             {!isDeleted && s.status === 'in_use' && s.box_id && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => { setReturnTarget(s); setShowReturnDialog(true); }}
+                                  className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded inline-flex"
+                                  title="Devolver a la caja"
+                                >
+                                  <ArrowDownToLine className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setTransferTarget(s); setShowTransferDialog(true); }}
+                                  className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded inline-flex"
+                                  title="Mover a otra caja"
+                                >
+                                  <MapPin className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                            {!isDeleted && s.status === 'in_use' && !s.box_id && (
                               <button
                                 type="button"
-                                onClick={() => { setReturnTarget(s); setShowReturnDialog(true); }}
-                                className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded inline-flex"
-                                title="Devolver a la caja"
+                                onClick={() => { setPlaceTarget(s); setShowPlaceDialog(true); }}
+                                className="p-1.5 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded inline-flex"
+                                title="Colocar en caja"
                               >
-                                <ArrowDownToLine className="w-4 h-4" />
+                                <MapPin className="w-4 h-4" />
                               </button>
                             )}
                             {!isDeleted && s.status !== 'in_use' && s.box_id && (
-                              <button
-                                type="button"
-                                onClick={() => { if (confirm('¿Sacar muestra? (+1 descongelación)')) checkoutSample(s); }}
-                                className="p-1.5 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded inline-flex"
-                                title="Sacar muestra"
-                              >
-                                <ArrowUpFromLine className="w-4 h-4" />
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => { if (confirm('¿Sacar muestra? (+1 descongelación)')) checkoutSample(s); }}
+                                  className="p-1.5 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded inline-flex"
+                                  title="Sacar muestra"
+                                >
+                                  <ArrowUpFromLine className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setTransferTarget(s); setShowTransferDialog(true); }}
+                                  className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded inline-flex"
+                                  title="Mover a otra caja"
+                                >
+                                  <MapPin className="w-4 h-4" />
+                                </button>
+                              </>
                             )}
                             {boxEntry && !isDeleted && (
                               <Link
@@ -891,6 +937,11 @@ export function SearchPage() {
         sample={returnTarget}
         open={showReturnDialog}
         onClose={() => { setShowReturnDialog(false); setReturnTarget(null); }}
+      />
+      <TransferSampleDialog
+        sample={transferTarget}
+        open={showTransferDialog}
+        onClose={() => { setShowTransferDialog(false); setTransferTarget(null); }}
       />
     </AppLayout>
   );

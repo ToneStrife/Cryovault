@@ -77,7 +77,10 @@ export function ForgotPasswordPage() {
           ) : (
             <>
               <p className="text-sm text-gray-600 mb-4">
-                Te enviaremos un enlace para establecer una contraseña nueva.
+                Te enviaremos un enlace para establecer una contraseña nueva. Abre el enlace en el mismo navegador donde lo solicitaste.
+              </p>
+              <p className="text-xs text-gray-400 mb-4">
+                Si no recibes el email, pide a tu administrador que use «Reset pass» en Usuarios para darte una contraseña provisional.
               </p>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

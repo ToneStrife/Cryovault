@@ -10,23 +10,23 @@ import { selectClass } from '@/lib/formStyles';
 import type { Sample, Freezer, Box } from '@/types';
 import { Plus } from 'lucide-react';
 
-interface PlaceSampleDialogProps {
+interface TransferSampleDialogProps {
   sample: Sample | null;
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
 
-export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSampleDialogProps) {
+export function TransferSampleDialog({ sample, open, onClose, onSuccess }: TransferSampleDialogProps) {
   const { user } = useAuth();
-  const { placeSampleAsync, isPlacingSample } = useSampleCheckout();
+  const { transferSampleAsync, isTransferringSample } = useSampleCheckout();
   const [freezerId, setFreezerId] = useState('');
   const [boxId, setBoxId] = useState('');
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [error, setError] = useState('');
 
   const { data: freezers = [] } = useQuery({
-    queryKey: ['place-freezers', user?.laboratory],
+    queryKey: ['transfer-freezers', user?.laboratory],
     queryFn: async () => {
       const { data, error: err } = await supabase.from('freezers').select('id, name, temperature').order('name');
       if (err) throw err;
@@ -36,7 +36,7 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
   });
 
   const { data: boxes = [] } = useQuery({
-    queryKey: ['place-boxes', freezerId],
+    queryKey: ['transfer-boxes', freezerId],
     queryFn: async () => {
       const { data, error: err } = await (supabase.from('boxes') as any)
         .select('id, name, rows, columns, status, freezer_id')
@@ -49,33 +49,32 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
     enabled: open && !!freezerId,
   });
 
-  const availableBoxes = useMemo(
-    () => boxes.filter((b) => b.id !== sample?.box_id),
-    [boxes, sample?.box_id],
-  );
-
-  const selectedBox = availableBoxes.find((b) => b.id === boxId);
+  const selectedBox = boxes.find((b) => b.id === boxId);
 
   const { data: boxSamples = [] } = useQuery({
-    queryKey: ['place-box-samples', boxId],
+    queryKey: ['transfer-box-samples', boxId],
     queryFn: async () => {
       const { data, error: err } = await (supabase.from('samples') as any)
-        .select('position_row, position_column')
+        .select('id, position_row, position_column')
         .eq('box_id', boxId)
         .is('deleted_at', null)
         .not('position_row', 'is', null)
         .not('position_column', 'is', null);
       if (err) throw err;
-      return data as { position_row: number; position_column: number }[];
+      return data as { id: string; position_row: number; position_column: number }[];
     },
     enabled: open && !!boxId,
   });
 
   const occupiedSet = useMemo(() => {
     const set = new Set<string>();
-    boxSamples.forEach((s) => set.add(`${s.position_row}_${s.position_column}`));
+    boxSamples.forEach((s) => {
+      if (s.id !== sample?.id) {
+        set.add(`${s.position_row}_${s.position_column}`);
+      }
+    });
     return set;
-  }, [boxSamples]);
+  }, [boxSamples, sample?.id]);
 
   const handleClose = () => {
     setFreezerId('');
@@ -105,7 +104,7 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
     }
     setError('');
     try {
-      await placeSampleAsync({
+      await transferSampleAsync({
         sample,
         boxId,
         row: selectedCell.row,
@@ -113,8 +112,8 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
       });
       onSuccess?.();
       handleClose();
-    } catch (e: any) {
-      setError(e.message || 'Error al colocar la muestra');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al mover la muestra');
     }
   };
 
@@ -125,7 +124,7 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Colocar muestra</DialogTitle>
+          <DialogTitle>Mover a otra caja</DialogTitle>
         </DialogHeader>
         {sample && (
           <p className="text-sm text-gray-500 font-mono">{sample.sample_code}</p>
@@ -148,7 +147,7 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
               ))}
             </select>
           </FormField>
-          <FormField label="Caja">
+          <FormField label="Caja destino">
             <select
               value={boxId}
               onChange={(e) => handleBoxChange(e.target.value)}
@@ -156,15 +155,12 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
               className={selectClass}
             >
               <option value="">Seleccionar...</option>
-              {availableBoxes.map((b) => (
+              {boxes.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name} ({b.rows}×{b.columns})
+                  {b.name} ({b.rows}×{b.columns}){b.status === 'in_use' ? ' — en uso' : ''}
                 </option>
               ))}
             </select>
-            {freezerId && availableBoxes.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">No hay cajas disponibles en este congelador.</p>
-            )}
           </FormField>
           {selectedBox && rows > 0 && cols > 0 && (
             <FormField label="Posición libre">
@@ -217,10 +213,10 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={isPlacingSample || !selectedCell}
+              disabled={isTransferringSample || !selectedCell}
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
             >
-              {isPlacingSample ? 'Colocando...' : 'Colocar'}
+              {isTransferringSample ? 'Moviendo...' : 'Mover muestra'}
             </Button>
           </div>
         </div>

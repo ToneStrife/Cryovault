@@ -18,7 +18,7 @@ const corsHeaders = {
 const PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 
 type InvitePayload = {
-  action?: 'create' | 'reset_credentials' | 'resend_email' | 'get_credentials' | 'revoke';
+  action?: 'create' | 'reset_credentials' | 'resend_email' | 'get_credentials' | 'revoke' | 'admin_reset_password';
   email?: string;
   role?: string;
   laboratory?: string;
@@ -82,6 +82,10 @@ Deno.serve(async (req) => {
 
   if (action === 'revoke') {
     return handleRevoke(adminClient, inviter, payload);
+  }
+
+  if (action === 'admin_reset_password') {
+    return handleAdminResetPassword(adminClient, inviter, payload, req);
   }
 
   return handleCreate(adminClient, inviter, authData.user.id, payload, req);
@@ -400,6 +404,73 @@ async function handleResetCredentials(
   return json({
     ok: true,
     action: 'reset_credentials',
+    version: API_VERSION,
+    email,
+    temporary_password: temporaryPassword,
+    login_url: getLoginUrl(req),
+    ...emailResult,
+  });
+}
+
+async function handleAdminResetPassword(
+  adminClient: ReturnType<typeof createClient>,
+  inviter: { id: string; role: string; laboratory: string },
+  payload: InvitePayload,
+  req: Request,
+) {
+  const denied = assertCanManageInvites(inviter);
+  if (denied) return denied;
+
+  const email = payload.email?.trim().toLowerCase();
+  if (!email) return json({ error: 'Email inválido', version: API_VERSION }, 400);
+
+  let profileQuery = adminClient
+    .from('profiles')
+    .select('id, email, role, laboratory')
+    .eq('email', email);
+
+  if (inviter.role === 'admin') {
+    profileQuery = profileQuery.eq('laboratory', inviter.laboratory).neq('role', 'super_admin');
+  }
+
+  const { data: profile, error: profileErr } = await profileQuery.maybeSingle();
+  if (profileErr) return json({ error: profileErr.message, version: API_VERSION }, 400);
+  if (!profile) return json({ error: 'Usuario no encontrado en tu laboratorio', version: API_VERSION }, 404);
+  if (profile.id === inviter.id) {
+    return json({ error: 'No puedes resetear tu propia contraseña desde aquí', version: API_VERSION }, 400);
+  }
+
+  let temporaryPassword = payload.password?.trim() || '';
+  if (!temporaryPassword) {
+    temporaryPassword = generateTemporaryPassword();
+  } else {
+    const passwordError = validatePassword(temporaryPassword);
+    if (passwordError) return json({ error: passwordError, version: API_VERSION }, 400);
+  }
+
+  const { data: authUser, error: getUserError } = await adminClient.auth.admin.getUserById(profile.id);
+  if (getUserError || !authUser.user) return json({ error: 'Usuario de autenticación no encontrado', version: API_VERSION }, 404);
+
+  const { error: updateError } = await adminClient.auth.admin.updateUserById(profile.id, {
+    password: temporaryPassword,
+    user_metadata: {
+      ...authUser.user.user_metadata,
+      needs_password_setup: true,
+    },
+  });
+
+  if (updateError) return json({ error: updateError.message, version: API_VERSION }, 400);
+
+  const emailResult = await trySendEmail(
+    req,
+    email,
+    temporaryPassword,
+    payload.send_email === true,
+  );
+
+  return json({
+    ok: true,
+    action: 'admin_reset_password',
     version: API_VERSION,
     email,
     temporary_password: temporaryPassword,

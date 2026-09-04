@@ -369,6 +369,30 @@ export function UsersPage() {
     onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al resetear contraseña'),
   });
 
+  const adminResetPasswordMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { action: 'admin_reset_password', email: email.trim().toLowerCase(), send_email: false },
+      });
+      const message = await parseEdgeFunctionError(error, data);
+      if (error || (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error)) {
+        throw new Error(message);
+      }
+      return data as EdgeInviteResponse;
+    },
+    onSuccess: (data) => {
+      setBackendStale(isBackendStale(data));
+      setInviteError('');
+      setCredentialsCopied(false);
+      setCredentialsResult(toCredentialsResult(data));
+      setInviteNotice({
+        message: 'Contraseña provisional generada. El usuario deberá cambiarla al iniciar sesión.',
+        tone: 'warning',
+      });
+    },
+    onError: (e: unknown) => setInviteError(e instanceof Error ? e.message : 'Error al resetear contraseña'),
+  });
+
   const revokeInviteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { data, error } = await supabase.functions.invoke('invite-user', {
@@ -738,6 +762,18 @@ export function UsersPage() {
                                     <KeyRound className="w-3.5 h-3.5" />
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => {
+                                    if (!window.confirm(`¿Generar contraseña provisional para ${u.email}?`)) return;
+                                    setInviteError('');
+                                    adminResetPasswordMutation.mutate(u.email);
+                                  }}
+                                  disabled={adminResetPasswordMutation.isPending}
+                                  className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 hover:border-amber-300 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                  title="Resetear contraseña"
+                                >
+                                  {adminResetPasswordMutation.isPending ? '...' : 'Reset pass'}
+                                </button>
                               </div>
                             )}
                           </td>

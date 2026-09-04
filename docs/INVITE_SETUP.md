@@ -46,6 +46,18 @@ Configura secrets en **Dashboard → Edge Functions → invite-user → Secrets*
 5. La app redirige a **Cambiar contraseña** (`/accept-invite`).
 6. Tras guardar la contraseña definitiva, accede al dashboard.
 
+## Recuperación de contraseña (olvidé mi contraseña)
+
+Usa **Authentication → SMTP** en Supabase (independiente del SMTP de la Edge Function).
+
+Redirect URLs necesarias en **Authentication → URL Configuration**:
+- `https://tonestrife.github.io/Cryovault/accept-invite`
+- `http://localhost:5173/Cryovault/accept-invite`
+
+El flujo envía un enlace a `/accept-invite` con `type=recovery`. Debe abrirse en el **mismo navegador** donde se solicitó.
+
+**Alternativa:** un administrador puede usar **Reset pass** en Usuarios (usuarios activos) o **Nueva contraseña** (pendientes de activación) para generar una contraseña provisional.
+
 ## Edge Function `invite-user`
 
 Versión actual del backend: `provisioned-v2`. Si la app muestra aviso de backend desactualizado, redepliega la función.
@@ -58,6 +70,7 @@ Versión actual del backend: `provisioned-v2`. Si la app muestra aviso de backen
 | `get_credentials` | Devuelve contraseña provisional guardada (solo pendientes) |
 | `resend_email` | Reenvía email con la **misma** contraseña |
 | `reset_credentials` | Genera contraseña **nueva**, actualiza Auth y `invites` |
+| `admin_reset_password` | Contraseña provisional para usuario **activo** (admin) |
 | `revoke` | Elimina invitación pendiente y usuario de Auth |
 
 La contraseña provisional se guarda en `invites.temporary_password` (solo accesible vía Edge Function, no desde el cliente).

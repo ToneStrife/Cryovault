@@ -36,6 +36,20 @@ async function logMovement(params: {
   if (error) console.warn('sample_movements insert failed:', error.message);
 }
 
+async function assertCellFree(boxId: string, row: number, col: number, excludeSampleId?: string) {
+  const { data: occupant, error: checkErr } = await (supabase.from('samples') as any)
+    .select('id')
+    .eq('box_id', boxId)
+    .eq('position_row', row)
+    .eq('position_column', col)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (checkErr) throw checkErr;
+  if (occupant && occupant.id !== excludeSampleId) {
+    throw new Error('Celda ocupada');
+  }
+}
+
 function warnMaxThaws(newThaws: number, maxThaws: number) {
   if (newThaws >= maxThaws) {
     setTimeout(
@@ -86,17 +100,7 @@ async function performMoveSample(
     return;
   }
 
-  const { data: occupant, error: checkErr } = await (supabase.from('samples') as any)
-    .select('id')
-    .eq('box_id', sample.box_id)
-    .eq('position_row', toRow)
-    .eq('position_column', toCol)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (checkErr) throw checkErr;
-  if (occupant && occupant.id !== sample.id) {
-    throw new Error('Celda ocupada');
-  }
+  await assertCellFree(sample.box_id, toRow, toCol, sample.id);
 
   const label = positionLabel(toRow, toCol);
   const { error } = await (supabase.from('samples') as any)
@@ -117,6 +121,68 @@ async function performMoveSample(
     toPosition: label,
     movedBy: userId,
     notes: 'move_position',
+  });
+}
+
+async function performTransferSample(
+  sample: Sample,
+  toBoxId: string,
+  toRow: number,
+  toCol: number,
+  userId: string,
+) {
+  await assertCellFree(toBoxId, toRow, toCol, sample.id);
+
+  const label = positionLabel(toRow, toCol);
+  const fromBoxId = sample.box_id;
+  const { error } = await (supabase.from('samples') as any)
+    .update({
+      box_id: toBoxId,
+      position_row: toRow,
+      position_column: toCol,
+      position_label: label,
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', sample.id);
+  if (error) throw error;
+
+  await logMovement({
+    sampleId: sample.id,
+    fromBoxId,
+    toBoxId,
+    fromPosition: sample.position_label,
+    toPosition: label,
+    movedBy: userId,
+    notes: fromBoxId === toBoxId ? 'move_position' : 'transfer_box',
+  });
+}
+
+export async function performRemoveFromBox(sample: Sample, userId: string) {
+  const updates: Record<string, unknown> = {
+    box_id: null,
+    position_row: null,
+    position_column: null,
+    position_label: null,
+    updated_at: new Date().toISOString(),
+  };
+  if (sample.status === 'in_use') {
+    updates.status = 'active';
+  }
+
+  const { error } = await (supabase.from('samples') as any)
+    .update(updates)
+    .eq('id', sample.id);
+  if (error) throw error;
+
+  await logMovement({
+    sampleId: sample.id,
+    fromBoxId: sample.box_id,
+    toBoxId: null,
+    fromPosition: sample.position_label,
+    toPosition: null,
+    movedBy: userId,
+    notes: 'remove_from_box',
   });
 }
 
@@ -186,6 +252,7 @@ export function useSampleCheckout() {
     }) => {
       if (!user) throw new Error('No autenticado');
       if (!sample.box_id) throw new Error('La muestra no está asociada a una caja');
+      await assertCellFree(sample.box_id, row, col, sample.id);
       const label = positionLabel(row, col);
       const { error } = await (supabase.from('samples') as any)
         .update({
@@ -223,6 +290,7 @@ export function useSampleCheckout() {
       col: number;
     }) => {
       if (!user) throw new Error('No autenticado');
+      await assertCellFree(boxId, row, col, sample.id);
       const label = positionLabel(row, col);
       const { error } = await (supabase.from('samples') as any)
         .update({
@@ -244,6 +312,32 @@ export function useSampleCheckout() {
         movedBy: user.id,
         notes: 'place_sample',
       });
+    },
+    onSuccess: () => invalidateAll(),
+  });
+
+  const transferSampleMutation = useMutation({
+    mutationFn: async ({
+      sample,
+      boxId,
+      row,
+      col,
+    }: {
+      sample: Sample;
+      boxId: string;
+      row: number;
+      col: number;
+    }) => {
+      if (!user) throw new Error('No autenticado');
+      await performTransferSample(sample, boxId, row, col, user.id);
+    },
+    onSuccess: () => invalidateAll(),
+  });
+
+  const removeFromBoxMutation = useMutation({
+    mutationFn: async (sample: Sample) => {
+      if (!user) throw new Error('No autenticado');
+      await performRemoveFromBox(sample, user.id);
     },
     onSuccess: () => invalidateAll(),
   });
@@ -337,6 +431,12 @@ export function useSampleCheckout() {
     placeSample: placeSampleMutation.mutate,
     placeSampleAsync: placeSampleMutation.mutateAsync,
     isPlacingSample: placeSampleMutation.isPending,
+    transferSample: transferSampleMutation.mutate,
+    transferSampleAsync: transferSampleMutation.mutateAsync,
+    isTransferringSample: transferSampleMutation.isPending,
+    removeFromBox: removeFromBoxMutation.mutate,
+    removeFromBoxAsync: removeFromBoxMutation.mutateAsync,
+    isRemovingFromBox: removeFromBoxMutation.isPending,
     checkoutBox: checkoutBoxMutation.mutate,
     isCheckingOutBox: checkoutBoxMutation.isPending,
     returnBox: returnBoxMutation.mutate,
