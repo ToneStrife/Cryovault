@@ -7,7 +7,7 @@ Revisión completa del repositorio `ToneStrife/Cryovault` (app React + Vite + Su
 1. **Revocar el token de GitHub filtrado.** El mensaje del commit `1e32693` (merge de agosto) contiene una URL con un token `gho_…` en claro. El historial es público, así que hay que revocarlo en GitHub → Settings → Developer settings → Personal access tokens (o Applications → Authorized OAuth Apps, si lo generó una herramienta como Dyad). Reescribir el historial no merece la pena: el token ya ha estado expuesto.
 2. **Aplicar la migración 019** (`supabase/migrations/20261107120000_019_security_hardening.sql`) con `npx supabase db push` o pegándola en el SQL Editor. Hasta que se aplique, el trigger de alta de usuarios acepta el rol y el laboratorio que envíe el propio cliente.
 3. **Desactivar el registro público** en Supabase: Authentication → Providers → Email → *Allow new users to sign up*. La app nunca lo usa (las cuentas las crea la Edge Function con la clave de servicio).
-4. **Comprobar celdas duplicadas** si la migración avisa de que no pudo crear `samples_unique_active_position`. La consulta para localizarlas está en el propio aviso.
+4. **Revisar 21 celdas con dos muestras del mismo código** (congeladores Biobanco y Marga, casi todas en A1, creadas el mismo día). Pueden ser alícuotas legítimas o importaciones repetidas: solo vosotros podéis decidirlo, así que no se ha tocado ningún dato ni se impone unicidad por celda en la base de datos. Consulta para listarlas: `SELECT b.name, s.position_label, s.sample_code, count(*) FROM samples s JOIN boxes b ON b.id = s.box_id WHERE s.deleted_at IS NULL GROUP BY 1,2,3, s.box_id, s.position_row, s.position_column HAVING count(*) > 1;`
 5. Opcional: definir `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` como variables del repositorio en GitHub Actions si algún día cambias de proyecto Supabase. Mientras tanto el código usa los valores actuales por defecto.
 
 ## 2. Seguridad
@@ -54,7 +54,6 @@ Revisión completa del repositorio `ToneStrife/Cryovault` (app React + Vite + Su
 | «Ver todos los resultados» del panel enviaba `?q=` y la búsqueda solo leía `?code=`. | `SearchPage.tsx` |
 | El pie de la imagen exportada de la cuadrícula se dibujaba fuera del lienzo (`canvasW` en vez de `canvasH`). | `BoxDetailPage.tsx` |
 | Escáner QR: consulta mal formada con QR no UUID, errores ignorados y «Intentar de nuevo» que llamaba a `start()` sin parámetros. | `src/components/QrScannerDialog.tsx` |
-| Celdas duplicadas por carrera entre usuarios: ahora lo impide un índice único en base de datos (migración 019). | `supabase/migrations/…019…` |
 
 ## 4. Limpieza del repositorio
 

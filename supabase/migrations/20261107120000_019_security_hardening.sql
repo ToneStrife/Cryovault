@@ -7,7 +7,6 @@
 --   A2  audit_logs: un admin leía los logs de TODOS los laboratorios.
 --   A4  "Users can insert own profile" permitía elegir rol y laboratorio.
 --   A3  FKs a auth.users sin ON DELETE impedían borrar usuarios (auth.admin.deleteUser).
---   M1  Sin unicidad de posición (box_id, fila, columna) entre muestras activas.
 --   M2  Una muestra podía apuntar a una caja de otro laboratorio.
 --   M4  Storage: sin política UPDATE (las subidas con upsert fallaban).
 --   M7  updated_at nunca se actualizaba en BD.
@@ -136,19 +135,10 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- 6. Una sola muestra activa por celda. Si ya hay duplicados, avisa y no falla.
+-- 6. (Retirado) Índice único por celda. Varias alícuotas con el mismo código
+--    pueden compartir celda de forma legítima, así que la unicidad por posición
+--    no se impone en BD. La comprobación sigue en el cliente (assertCellFree).
 -- ---------------------------------------------------------------------------
-DO $$
-BEGIN
-  CREATE UNIQUE INDEX IF NOT EXISTS samples_unique_active_position
-    ON public.samples (box_id, position_row, position_column)
-    WHERE deleted_at IS NULL
-      AND box_id IS NOT NULL
-      AND position_row IS NOT NULL
-      AND position_column IS NOT NULL;
-EXCEPTION WHEN unique_violation THEN
-  RAISE WARNING 'samples_unique_active_position NO creado: hay celdas duplicadas. Localizalas con: SELECT box_id, position_row, position_column, count(*) FROM public.samples WHERE deleted_at IS NULL AND box_id IS NOT NULL GROUP BY 1,2,3 HAVING count(*) > 1; corrige y vuelve a ejecutar esta seccion.';
-END $$;
 
 -- ---------------------------------------------------------------------------
 -- 7. La caja de una muestra debe ser de mi laboratorio; el rack de una caja,
