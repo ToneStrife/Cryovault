@@ -28,7 +28,7 @@ export function useSamples(boxId?: string) {
     mutationFn: async (sample: Omit<Sample, 'id' | 'created_at' | 'updated_at'>) => {
       const { data, error } = await supabase
         .from('samples')
-        .insert([sample] as any)
+        .insert([sample])
         .select()
         .single();
 
@@ -42,7 +42,7 @@ export function useSamples(boxId?: string) {
 
   const updateSample = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Sample> & { id: string }) => {
-      const { data, error } = await (supabase.from('samples') as any)
+      const { data, error } = await supabase.from('samples')
         .update(updates)
         .eq('id', id)
         .select()

@@ -159,7 +159,7 @@ export function UsersPage() {
   const { data: laboratories = [] } = useQuery({
     queryKey: ['laboratories'],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('laboratories') as any)
+      const { data, error } = await supabase.from('laboratories')
         .select('*')
         .order('name', { ascending: true });
       if (error) throw error;
@@ -172,11 +172,11 @@ export function UsersPage() {
     queryKey: ['invites', user?.role, user?.laboratory],
     queryFn: async () => {
       // Columnas explícitas: temporary_password solo es accesible desde la Edge Function.
-      const { data, error } = await (supabase.from('invites') as any)
+      const { data, error } = await supabase.from('invites')
         .select('id, email, role, invited_by, laboratory, created_at, accepted_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data || []) as any[];
+      return data || [];
     },
     enabled: !!user && canManageUsers,
   });
@@ -184,7 +184,7 @@ export function UsersPage() {
   const { data: allOverrides = [] } = useQuery({
     queryKey: ['user-permissions', user?.role, user?.laboratory],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('user_permissions') as any).select('*');
+      const { data, error } = await supabase.from('user_permissions').select('*');
       if (error) throw error;
       return (data || []) as { user_id: string; action: string; granted: boolean }[];
     },
@@ -209,7 +209,7 @@ export function UsersPage() {
     mutationFn: async (name: string) => {
       const cleanName = name.trim();
       if (!cleanName) throw new Error('El nombre del laboratorio es obligatorio');
-      const { error } = await (supabase.from('laboratories') as any).insert([{
+      const { error } = await supabase.from('laboratories').insert([{
         name: cleanName,
         slug: slugifyLaboratory(cleanName),
         created_by: user!.id,
@@ -222,14 +222,14 @@ export function UsersPage() {
       setLabName('');
       setLabError('');
     },
-    onError: (e: any) => setLabError(e.message),
+    onError: (e: Error) => setLabError(e.message),
   });
 
   const updateUserMutation = useMutation({
     mutationFn: async ({ userId, role, laboratory }: { userId: string; role: UserRole; laboratory: string }) => {
       const payload: Record<string, string> = { role };
       if (isSuperAdmin) payload.laboratory = laboratory;
-      const { error } = await (supabase.from('profiles') as any).update(payload).eq('id', userId);
+      const { error } = await supabase.from('profiles').update(payload).eq('id', userId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -238,7 +238,7 @@ export function UsersPage() {
       setEditUser(null);
       setEditError('');
     },
-    onError: (e: any) => setEditError(e.message),
+    onError: (e: Error) => setEditError(e.message),
   });
 
   const inviteMutation = useMutation({
@@ -294,7 +294,7 @@ export function UsersPage() {
         });
       }
     },
-    onError: (e: any) => setInviteError(e.message),
+    onError: (e: Error) => setInviteError(e.message),
   });
 
   const getCredentialsMutation = useMutation({
@@ -452,35 +452,28 @@ export function UsersPage() {
     setPermError('');
     try {
       const roleDefaults = ROLE_PERMISSIONS[permEditUser.role as UserRole] || [];
-      for (const p of PERMISSIONS) {
-        const granted = permState[p.action] ?? false;
-        const defaultGranted = roleDefaults.includes(p.action);
-        if (granted !== defaultGranted) {
-          const { error } = await (supabase.from('user_permissions') as any).upsert({
-            user_id: permEditUser.id,
-            action: p.action,
-            granted,
-            laboratory: permEditUser.laboratory,
-          }, { onConflict: 'user_id,action' });
-          if (error) throw error;
-        } else {
-          const { error } = await (supabase.from('user_permissions') as any)
-            .delete()
-            .eq('user_id', permEditUser.id)
-            .eq('action', p.action);
-          if (error) throw error;
-        }
-      }
+      // Solo se guardan las diferencias respecto al rol; el resto se borra.
+      // Todo en una transacción (función save_user_permissions, migración 021).
+      const overrides = PERMISSIONS
+        .map((p) => ({ action: p.action, granted: permState[p.action] ?? false }))
+        .filter((o) => o.granted !== roleDefaults.includes(o.action));
+      const { error } = await supabase.rpc('save_user_permissions', {
+        p_user_id: permEditUser.id,
+        p_laboratory: permEditUser.laboratory,
+        p_overrides: overrides,
+      });
+      if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
       setPermEditUser(null);
-    } catch (e: any) {
+    } catch (err: unknown) {
+      const e = err instanceof Error ? err : new Error(String(err));
       setPermError(e.message);
     } finally {
       setPermSaving(false);
     }
   };
 
-  const pendingInvites = invites.filter((i: any) => !i.accepted_at);
+  const pendingInvites = invites.filter((i) => !i.accepted_at);
 
   return (
     <AppLayout>
@@ -619,7 +612,7 @@ export function UsersPage() {
                 <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingInvites.length}</span>
               </div>
               <div className="divide-y divide-gray-50">
-                {pendingInvites.map((inv: any) => (
+                {pendingInvites.map((inv) => (
                   <div key={inv.id} className="px-6 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
@@ -629,7 +622,7 @@ export function UsersPage() {
                         <p className="text-sm font-medium text-gray-800">{inv.email}</p>
                         <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap">
                           <Clock className="w-3 h-3" />
-                          {new Date(inv.created_at).toLocaleDateString('es-ES')}
+                          {inv.created_at ? new Date(inv.created_at).toLocaleDateString('es-ES') : ''}
                           <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${ROLE_COLORS[inv.role as UserRole] || 'bg-gray-100 text-gray-500'}`}>
                             {ROLE_LABEL[inv.role as UserRole] || inv.role}
                           </span>

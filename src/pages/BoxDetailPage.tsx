@@ -5,6 +5,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
+import type { TablesUpdate } from '@/lib/database.types';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -426,7 +427,7 @@ export function BoxDetailPage() {
   const { data: freezerRacks = [] } = useQuery({
     queryKey: ['racks', freezerId],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('racks') as any).select('*').eq('freezer_id', freezerId!).order('shelf_number', { ascending: true });
+      const { data, error } = await supabase.from('racks').select('*').eq('freezer_id', freezerId!).order('shelf_number', { ascending: true });
       if (error) throw error;
       return data as Rack[];
     },
@@ -512,7 +513,7 @@ export function BoxDetailPage() {
   const updateSampleMutation = useMutation({
     mutationFn: async (updatedData: Partial<Sample>) => {
       if (!selectedSample) throw new Error('No hay muestra seleccionada');
-      const { error } = await (supabase.from('samples') as any)
+      const { error } = await supabase.from('samples')
         .update({
           ...updatedData,
           updated_at: new Date().toISOString(),
@@ -551,7 +552,7 @@ export function BoxDetailPage() {
         laboratory: user!.laboratory,
         created_by: user!.id,
       };
-      const { error } = await (supabase.from('samples') as any).insert([payload]);
+      const { error } = await supabase.from('samples').insert([payload]);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -561,7 +562,7 @@ export function BoxDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
       closeAddDialog();
     },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const removeSampleMutation = useMutation({
@@ -590,7 +591,7 @@ export function BoxDetailPage() {
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+      const payload: TablesUpdate<'samples'> = { updated_at: new Date().toISOString() };
       if (bulkApply.patient_code) payload.patient_code = bulkForm.patient_code.trim() || null;
       if (bulkApply.subject_code) payload.subject_code = bulkForm.subject_code.trim() || null;
       if (bulkApply.project) payload.project = bulkForm.project.trim() || null;
@@ -605,7 +606,7 @@ export function BoxDetailPage() {
       if (bulkApply.max_thaws) payload.max_thaws = parseInt(bulkForm.max_thaws) || settingsOptions.defaultMaxThaws;
       if (bulkApply.notes) payload.notes = bulkForm.notes.trim() || null;
       if (Object.keys(payload).length === 1) throw new Error('Selecciona al menos un campo');
-      const { error } = await (supabase.from('samples') as any).update(payload).in('id', selectedIds);
+      const { error } = await supabase.from('samples').update(payload).in('id', selectedIds);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -614,7 +615,7 @@ export function BoxDetailPage() {
       setBulkApply({});
       clearSelect();
     },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const editBoxMutation = useMutation({
@@ -628,7 +629,7 @@ export function BoxDetailPage() {
         const { data: urlData } = supabase.storage.from('cryo-images').getPublicUrl(path);
         imageUrl = urlData.publicUrl;
       }
-      const { error } = await (supabase.from('boxes') as any)
+      const { error } = await supabase.from('boxes')
         .update({ name: name.trim(), description: description.trim() || null, shelf_number, rack_id, rows, columns, image_url: imageUrl })
         .eq('id', boxId!);
       if (error) throw error;
@@ -640,7 +641,7 @@ export function BoxDetailPage() {
       setShowEditBoxDialog(false);
       setEditBoxImageFile(null);
     },
-    onError: (e: any) => setEditBoxError(e.message),
+    onError: (e: Error) => setEditBoxError(e.message),
   });
 
   // --- Spreadsheet save ---
@@ -674,7 +675,7 @@ export function BoxDetailPage() {
           laboratory: user!.laboratory,
           created_by: user!.id,
         };
-        const { data: inserted, error } = await (supabase.from('samples') as any)
+        const { data: inserted, error } = await supabase.from('samples')
           .insert([payload]).select().single();
         if (error) throw error;
         setSheetRows((prev) =>
@@ -686,7 +687,7 @@ export function BoxDetailPage() {
         );
         queryClient.invalidateQueries({ queryKey: ['box', boxId] });
       } else if (sr._id) {
-        const { error } = await (supabase.from('samples') as any)
+        const { error } = await supabase.from('samples')
           .update({
             sample_code: sr.sample_code.trim(),
             patient_code: sr.patient_code.trim() || null,
@@ -755,7 +756,7 @@ export function BoxDetailPage() {
           let val = pastedRows[pr][pc].trim();
           // Validate select values; fall back to current value if invalid
           if (colDef.type === 'select' && colDef.options && val && !colDef.options.includes(val)) {
-            val = (updated[targetRowIdx] as any)[colKey];
+            val = String(updated[targetRowIdx][colKey as keyof SpreadsheetRow] ?? '');
           }
           updated[targetRowIdx] = { ...updated[targetRowIdx], [colKey]: val, _dirty: true };
           highlights.add(`${targetRowIdx}_${targetColIdx}`);
@@ -1017,7 +1018,7 @@ export function BoxDetailPage() {
       const sampleType = (sampleTypes.includes(row['tipo'] as SampleType) ? row['tipo'] : settingsOptions.defaultSampleType) as SampleType;
       const status = (statuses.includes(row['estado'] as SampleStatus) ? row['estado'] : settingsOptions.defaultSampleStatus) as SampleStatus;
       const rowUnits = (units.includes(row['unidades'] as UnitType) ? row['unidades'] : settingsOptions.defaultUnits) as UnitType;
-      const { error } = await (supabase.from('samples') as any).insert([{
+      const { error } = await supabase.from('samples').insert([{
         sample_code: code, patient_code: row['paciente'] || null, project: row['proyecto'] || null,
         sample_type: sampleType, subtype: row['subtipo'] || null,
         volume: row['volumen'] ? parseFloat(row['volumen']) : null, units: rowUnits, status,
@@ -1669,7 +1670,7 @@ export function BoxDetailPage() {
                           className={`border-b border-gray-100 transition-colors ${isNew && !isDirty ? 'bg-gray-50/40 hover:bg-gray-50' : isDirty ? 'bg-amber-50/40' : 'hover:bg-blue-50/20'}`}
                         >
                           {sheetCols.map((col, colIdx) => {
-                            const val = (sr as any)[col.key] as string;
+                            const val = String(sr[col.key as keyof SpreadsheetRow] ?? '');
                             // editable column index among editable cols (excluding readonly)
                             const editableColIdx = EDITABLE_COLS.findIndex((c) => c.key === col.key);
                             const isHighlighted = editableColIdx >= 0 && pasteHighlight.has(`${idx}_${editableColIdx}`);
@@ -1854,7 +1855,7 @@ export function BoxDetailPage() {
                     <p className="text-xs text-gray-500 font-medium">{label}</p>
                     {type === 'select' ? (
                       <select
-                        value={(editForm as any)[key]}
+                        value={editForm[key as keyof SampleFormData]}
                         onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
                         className={selectClass}
                       >
@@ -1862,7 +1863,7 @@ export function BoxDetailPage() {
                       </select>
                     ) : (
                       <Input
-                        value={(editForm as any)[key]}
+                        value={editForm[key as keyof SampleFormData]}
                         onChange={(e) => setEditForm(p => ({...p, [key]: e.target.value}))}
                         type={type === 'number' ? 'number' : 'text'}
                         className="h-9"
@@ -1973,7 +1974,7 @@ export function BoxDetailPage() {
                     <input type="checkbox" checked={!!bulkApply[key]} onChange={() => toggleBulkField(key)} className="rounded border-gray-300 text-blue-600" />
                     {label}
                   </span>
-                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
+                  <Input type={type} value={bulkForm[key as keyof typeof bulkForm]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
                 </label>
               ))}
               <label className="space-y-1">

@@ -1,8 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { positionLabel } from '@/lib/positionUtils';
 import type { Sample } from '@/types';
+
+/**
+ * Operaciones de sacar, devolver, colocar, mover y quitar muestras.
+ *
+ * Cada operación es una función RPC de Supabase (migración 021) que se ejecuta
+ * en una sola transacción: actualiza la muestra, la caja y el registro de
+ * movimientos, o no hace nada si algo falla. La comprobación de celda libre
+ * se hace dentro de la transacción con la caja bloqueada, así que dos usuarios
+ * no pueden ocupar la misma celda a la vez.
+ */
 
 export const CHECKOUT_QUERY_KEYS = [
   'samples',
@@ -15,40 +24,18 @@ export const CHECKOUT_QUERY_KEYS = [
   'boxes-search',
 ] as const;
 
-async function logMovement(params: {
-  sampleId: string;
-  fromBoxId: string | null;
-  toBoxId: string | null;
-  fromPosition: string | null;
-  toPosition: string | null;
-  movedBy: string;
-  notes?: string;
-}) {
-  const { error } = await (supabase.from('sample_movements') as any).insert([{
-    sample_id: params.sampleId,
-    from_box_id: params.fromBoxId,
-    to_box_id: params.toBoxId,
-    from_position: params.fromPosition,
-    to_position: params.toPosition,
-    moved_by: params.movedBy,
-    notes: params.notes || null,
-  }]);
-  if (error) console.warn('sample_movements insert failed:', error.message);
-}
+type CheckoutSamplesResult = {
+  checked_out: number;
+  skipped: number;
+  max_thaw_hits: number;
+  new_thaws: number;
+  max_thaws: number;
+};
 
-async function assertCellFree(boxId: string, row: number, col: number, excludeSampleId?: string) {
-  const { data: occupant, error: checkErr } = await (supabase.from('samples') as any)
-    .select('id')
-    .eq('box_id', boxId)
-    .eq('position_row', row)
-    .eq('position_column', col)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (checkErr) throw checkErr;
-  if (occupant && occupant.id !== excludeSampleId) {
-    throw new Error('Celda ocupada');
-  }
-}
+type CheckoutBoxResult = {
+  sample_count: number;
+  warned: { new_thaws: number; max_thaws: number } | null;
+};
 
 function warnMaxThaws(newThaws: number, maxThaws: number) {
   if (newThaws >= maxThaws) {
@@ -59,131 +46,18 @@ function warnMaxThaws(newThaws: number, maxThaws: number) {
   }
 }
 
-async function performCheckoutSample(s: Sample, userId: string) {
-  const newThaws = s.thaw_count + 1;
-  const { error } = await (supabase.from('samples') as any)
-    .update({
-      status: 'in_use',
-      thaw_count: newThaws,
-      position_row: null,
-      position_column: null,
-      position_label: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', s.id);
-  if (error) throw error;
-  await logMovement({
-    sampleId: s.id,
-    fromBoxId: s.box_id,
-    toBoxId: s.box_id,
-    fromPosition: s.position_label,
-    toPosition: null,
-    movedBy: userId,
-    notes: 'checkout_sample',
-  });
-  return { newThaws, maxThaws: s.max_thaws };
-}
-
-async function performMoveSample(
-  sample: Sample,
-  toRow: number,
-  toCol: number,
-  userId: string,
+async function rpcVoid(
+  fn: 'return_box' | 'return_sample' | 'place_sample' | 'move_sample' | 'remove_sample_from_box',
+  args: Record<string, string | number | null>,
 ) {
-  if (sample.status !== 'active') {
-    throw new Error('Solo se pueden mover muestras activas');
-  }
-  if (!sample.box_id) {
-    throw new Error('La muestra no está en una caja');
-  }
-  if (sample.position_row === toRow && sample.position_column === toCol) {
-    return;
-  }
-
-  await assertCellFree(sample.box_id, toRow, toCol, sample.id);
-
-  const label = positionLabel(toRow, toCol);
-  const { error } = await (supabase.from('samples') as any)
-    .update({
-      position_row: toRow,
-      position_column: toCol,
-      position_label: label,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', sample.id);
+  // Los argumentos los valida la propia función en base de datos.
+  const { error } = await supabase.rpc(fn, args as never);
   if (error) throw error;
-
-  await logMovement({
-    sampleId: sample.id,
-    fromBoxId: sample.box_id,
-    toBoxId: sample.box_id,
-    fromPosition: sample.position_label,
-    toPosition: label,
-    movedBy: userId,
-    notes: 'move_position',
-  });
 }
 
-async function performTransferSample(
-  sample: Sample,
-  toBoxId: string,
-  toRow: number,
-  toCol: number,
-  userId: string,
-) {
-  await assertCellFree(toBoxId, toRow, toCol, sample.id);
-
-  const label = positionLabel(toRow, toCol);
-  const fromBoxId = sample.box_id;
-  const { error } = await (supabase.from('samples') as any)
-    .update({
-      box_id: toBoxId,
-      position_row: toRow,
-      position_column: toCol,
-      position_label: label,
-      status: 'active',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', sample.id);
-  if (error) throw error;
-
-  await logMovement({
-    sampleId: sample.id,
-    fromBoxId,
-    toBoxId,
-    fromPosition: sample.position_label,
-    toPosition: label,
-    movedBy: userId,
-    notes: fromBoxId === toBoxId ? 'move_position' : 'transfer_box',
-  });
-}
-
-export async function performRemoveFromBox(sample: Sample, userId: string) {
-  const updates: Record<string, unknown> = {
-    box_id: null,
-    position_row: null,
-    position_column: null,
-    position_label: null,
-    updated_at: new Date().toISOString(),
-  };
-  if (sample.status === 'in_use') {
-    updates.status = 'active';
-  }
-
-  const { error } = await (supabase.from('samples') as any)
-    .update(updates)
-    .eq('id', sample.id);
-  if (error) throw error;
-
-  await logMovement({
-    sampleId: sample.id,
-    fromBoxId: sample.box_id,
-    toBoxId: null,
-    fromPosition: sample.position_label,
-    toPosition: null,
-    movedBy: userId,
-    notes: 'remove_from_box',
-  });
+/** Quita una muestra de su caja (la deja sin posición). También la usan otras pantallas. */
+export async function performRemoveFromBox(sample: Sample) {
+  await rpcVoid('remove_sample_from_box', { p_sample_id: sample.id });
 }
 
 export function useSampleCheckout() {
@@ -196,10 +70,17 @@ export function useSampleCheckout() {
     });
   };
 
+  const requireUser = () => {
+    if (!user) throw new Error('No autenticado');
+  };
+
   const checkoutSampleMutation = useMutation({
     mutationFn: async (s: Sample) => {
-      if (!user) throw new Error('No autenticado');
-      return performCheckoutSample(s, user.id);
+      requireUser();
+      const { data, error } = await supabase.rpc('checkout_samples', { p_sample_ids: [s.id] });
+      if (error) throw error;
+      const result = data as unknown as CheckoutSamplesResult;
+      return { newThaws: result.new_thaws, maxThaws: result.max_thaws };
     },
     onSuccess: (result) => {
       invalidateAll();
@@ -209,17 +90,13 @@ export function useSampleCheckout() {
 
   const checkoutSamplesMutation = useMutation({
     mutationFn: async (samples: Sample[]) => {
-      if (!user) throw new Error('No autenticado');
-      const eligible = samples.filter((s) => s.status !== 'in_use');
-      if (eligible.length === 0) {
-        throw new Error('Ninguna muestra seleccionada puede sacarse (ya están en uso).');
-      }
-      let maxThawHits = 0;
-      for (const s of eligible) {
-        const result = await performCheckoutSample(s, user.id);
-        if (result.newThaws >= result.maxThaws) maxThawHits += 1;
-      }
-      return { checkedOut: eligible.length, skipped: samples.length - eligible.length, maxThawHits };
+      requireUser();
+      const { data, error } = await supabase.rpc('checkout_samples', {
+        p_sample_ids: samples.map((s) => s.id),
+      });
+      if (error) throw error;
+      const result = data as unknown as CheckoutSamplesResult;
+      return { checkedOut: result.checked_out, skipped: result.skipped, maxThawHits: result.max_thaw_hits };
     },
     onSuccess: (result) => {
       invalidateAll();
@@ -241,138 +118,60 @@ export function useSampleCheckout() {
   });
 
   const returnSampleMutation = useMutation({
-    mutationFn: async ({
-      sample,
-      row,
-      col,
-    }: {
-      sample: Sample;
-      row: number;
-      col: number;
-    }) => {
-      if (!user) throw new Error('No autenticado');
+    mutationFn: async ({ sample, row, col }: { sample: Sample; row: number; col: number }) => {
+      requireUser();
       if (!sample.box_id) throw new Error('La muestra no está asociada a una caja');
-      await assertCellFree(sample.box_id, row, col, sample.id);
-      const label = positionLabel(row, col);
-      const { error } = await (supabase.from('samples') as any)
-        .update({
-          status: 'active',
-          position_row: row,
-          position_column: col,
-          position_label: label,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', sample.id);
-      if (error) throw error;
-      await logMovement({
-        sampleId: sample.id,
-        fromBoxId: sample.box_id,
-        toBoxId: sample.box_id,
-        fromPosition: null,
-        toPosition: label,
-        movedBy: user.id,
-        notes: 'return_sample',
-      });
+      await rpcVoid('return_sample', { p_sample_id: sample.id, p_row: row, p_col: col });
     },
     onSuccess: () => invalidateAll(),
   });
 
   const placeSampleMutation = useMutation({
-    mutationFn: async ({
-      sample,
-      boxId,
-      row,
-      col,
-    }: {
-      sample: Sample;
-      boxId: string;
-      row: number;
-      col: number;
-    }) => {
-      if (!user) throw new Error('No autenticado');
-      await assertCellFree(boxId, row, col, sample.id);
-      const label = positionLabel(row, col);
-      const { error } = await (supabase.from('samples') as any)
-        .update({
-          box_id: boxId,
-          position_row: row,
-          position_column: col,
-          position_label: label,
-          status: 'active',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', sample.id);
-      if (error) throw error;
-      await logMovement({
-        sampleId: sample.id,
-        fromBoxId: sample.box_id,
-        toBoxId: boxId,
-        fromPosition: sample.position_label,
-        toPosition: label,
-        movedBy: user.id,
-        notes: 'place_sample',
+    mutationFn: async ({ sample, boxId, row, col }: { sample: Sample; boxId: string; row: number; col: number }) => {
+      requireUser();
+      await rpcVoid('place_sample', {
+        p_sample_id: sample.id,
+        p_box_id: boxId,
+        p_row: row,
+        p_col: col,
+        p_reason: 'place_sample',
       });
     },
     onSuccess: () => invalidateAll(),
   });
 
   const transferSampleMutation = useMutation({
-    mutationFn: async ({
-      sample,
-      boxId,
-      row,
-      col,
-    }: {
-      sample: Sample;
-      boxId: string;
-      row: number;
-      col: number;
-    }) => {
-      if (!user) throw new Error('No autenticado');
-      await performTransferSample(sample, boxId, row, col, user.id);
+    mutationFn: async ({ sample, boxId, row, col }: { sample: Sample; boxId: string; row: number; col: number }) => {
+      requireUser();
+      await rpcVoid('place_sample', {
+        p_sample_id: sample.id,
+        p_box_id: boxId,
+        p_row: row,
+        p_col: col,
+        p_reason: 'transfer',
+      });
     },
     onSuccess: () => invalidateAll(),
   });
 
   const removeFromBoxMutation = useMutation({
     mutationFn: async (sample: Sample) => {
-      if (!user) throw new Error('No autenticado');
-      await performRemoveFromBox(sample, user.id);
+      requireUser();
+      await performRemoveFromBox(sample);
     },
     onSuccess: () => invalidateAll(),
   });
 
   const checkoutBoxMutation = useMutation({
     mutationFn: async (boxId: string) => {
-      if (!user) throw new Error('No autenticado');
-      const { data: samples, error: fetchErr } = await (supabase.from('samples') as any)
-        .select('id, thaw_count, max_thaws, position_label')
-        .eq('box_id', boxId)
-        .is('deleted_at', null);
-      if (fetchErr) throw fetchErr;
-      const list = (samples || []) as Pick<Sample, 'id' | 'thaw_count' | 'max_thaws' | 'position_label'>[];
-
-      const { error: boxErr } = await (supabase.from('boxes') as any)
-        .update({ status: 'in_use', updated_at: new Date().toISOString() })
-        .eq('id', boxId);
-      if (boxErr) throw boxErr;
-
-      let maxWarning: { newThaws: number; maxThaws: number } | null = null;
-      for (const s of list) {
-        const newThaws = s.thaw_count + 1;
-        const { error } = await (supabase.from('samples') as any)
-          .update({
-            status: 'in_use',
-            thaw_count: newThaws,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', s.id);
-        if (error) throw error;
-        if (newThaws >= s.max_thaws) {
-          maxWarning = { newThaws, maxThaws: s.max_thaws };
-        }
-      }
-      return { warned: maxWarning, sampleCount: list.length };
+      requireUser();
+      const { data, error } = await supabase.rpc('checkout_box', { p_box_id: boxId });
+      if (error) throw error;
+      const result = data as unknown as CheckoutBoxResult;
+      return {
+        sampleCount: result.sample_count,
+        warned: result.warned ? { newThaws: result.warned.new_thaws, maxThaws: result.warned.max_thaws } : null,
+      };
     },
     onSuccess: (result) => {
       invalidateAll();
@@ -383,37 +182,17 @@ export function useSampleCheckout() {
   });
 
   const moveSampleMutation = useMutation({
-    mutationFn: async ({
-      sample,
-      row,
-      col,
-    }: {
-      sample: Sample;
-      row: number;
-      col: number;
-    }) => {
-      if (!user) throw new Error('No autenticado');
-      await performMoveSample(sample, row, col, user.id);
+    mutationFn: async ({ sample, row, col }: { sample: Sample; row: number; col: number }) => {
+      requireUser();
+      await rpcVoid('move_sample', { p_sample_id: sample.id, p_row: row, p_col: col });
     },
     onSuccess: () => invalidateAll(),
   });
 
   const returnBoxMutation = useMutation({
     mutationFn: async (boxId: string) => {
-      if (!user) throw new Error('No autenticado');
-      const { error: samplesErr } = await (supabase.from('samples') as any)
-        .update({
-          status: 'active',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('box_id', boxId)
-        .eq('status', 'in_use');
-      if (samplesErr) throw samplesErr;
-
-      const { error: boxErr } = await (supabase.from('boxes') as any)
-        .update({ status: 'active', updated_at: new Date().toISOString() })
-        .eq('id', boxId);
-      if (boxErr) throw boxErr;
+      requireUser();
+      await rpcVoid('return_box', { p_box_id: boxId });
     },
     onSuccess: () => invalidateAll(),
   });

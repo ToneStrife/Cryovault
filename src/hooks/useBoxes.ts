@@ -28,7 +28,7 @@ export function useBoxes(freezerId?: string) {
     mutationFn: async (box: Omit<Box, 'id' | 'created_at' | 'updated_at'>) => {
       const { data, error } = await supabase
         .from('boxes')
-        .insert([box] as any)
+        .insert([box])
         .select()
         .single();
 
@@ -42,7 +42,7 @@ export function useBoxes(freezerId?: string) {
 
   const updateBox = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Box> & { id: string }) => {
-      const { data, error } = await (supabase.from('boxes') as any)
+      const { data, error } = await supabase.from('boxes')
         .update(updates)
         .eq('id', id)
         .select()

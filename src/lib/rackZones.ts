@@ -3,7 +3,7 @@ import type { RackZone } from '@/types';
 
 export async function syncRackZones(rackId: string, shelfCount: number) {
   const count = Math.max(1, Math.min(20, shelfCount));
-  const { data: existing, error: selectError } = await (supabase.from('rack_zones') as any)
+  const { data: existing, error: selectError } = await supabase.from('rack_zones')
     .select('*')
     .eq('rack_id', rackId);
   if (selectError) throw selectError;
@@ -11,7 +11,7 @@ export async function syncRackZones(rackId: string, shelfCount: number) {
   const existingNums = new Set((existing || []).map((z: RackZone) => z.zone_number));
   for (let n = 1; n <= count; n++) {
     if (!existingNums.has(n)) {
-      const { error } = await (supabase.from('rack_zones') as any).insert([{
+      const { error } = await supabase.from('rack_zones').insert([{
         rack_id: rackId,
         zone_number: n,
         name: `Zona ${n}`,
@@ -21,7 +21,7 @@ export async function syncRackZones(rackId: string, shelfCount: number) {
     }
   }
 
-  const { error: deleteError } = await (supabase.from('rack_zones') as any)
+  const { error: deleteError } = await supabase.from('rack_zones')
     .delete()
     .eq('rack_id', rackId)
     .gt('zone_number', count);

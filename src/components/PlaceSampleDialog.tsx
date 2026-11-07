@@ -38,7 +38,7 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
   const { data: boxes = [] } = useQuery({
     queryKey: ['place-boxes', freezerId],
     queryFn: async () => {
-      const { data, error: err } = await (supabase.from('boxes') as any)
+      const { data, error: err } = await supabase.from('boxes')
         .select('id, name, rows, columns, status, freezer_id')
         .eq('freezer_id', freezerId)
         .is('deleted_at', null)
@@ -59,7 +59,7 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
   const { data: boxSamples = [] } = useQuery({
     queryKey: ['place-box-samples', boxId],
     queryFn: async () => {
-      const { data, error: err } = await (supabase.from('samples') as any)
+      const { data, error: err } = await supabase.from('samples')
         .select('position_row, position_column')
         .eq('box_id', boxId)
         .is('deleted_at', null)
@@ -113,7 +113,8 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
       });
       onSuccess?.();
       handleClose();
-    } catch (e: any) {
+    } catch (err: unknown) {
+      const e = err instanceof Error ? err : new Error(String(err));
       setError(e.message || 'Error al colocar la muestra');
     }
   };

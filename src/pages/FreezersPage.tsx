@@ -16,6 +16,7 @@ import {
   ChevronRight, ChevronLeft, Upload, X, Layers,
 } from 'lucide-react';
 import type { Freezer } from '@/types';
+import type { TablesInsert } from '@/lib/database.types';
 
 const TEMP_OPTIONS = [
   { label: '-80°C — Ultra-bajo (ULT)', value: -80 },
@@ -81,9 +82,10 @@ export function FreezersPage() {
   const { data: boxCounts = {} } = useQuery({
     queryKey: ['freezer-box-counts'],
     queryFn: async () => {
-      const { data } = await (supabase.from('boxes') as any).select('freezer_id').is('deleted_at', null);
+      const { data, error } = await supabase.from('boxes').select('freezer_id').is('deleted_at', null);
+      if (error) throw error;
       const counts: Record<string, number> = {};
-      (data || []).forEach((b: any) => { counts[b.freezer_id] = (counts[b.freezer_id] || 0) + 1; });
+      (data || []).forEach((b) => { counts[b.freezer_id] = (counts[b.freezer_id] || 0) + 1; });
       return counts;
     },
     enabled: !!user,
@@ -113,19 +115,19 @@ export function FreezersPage() {
       if (editTarget) {
         let imageUrl = editTarget.image_url;
         if (imageFile) imageUrl = await uploadImage(editTarget.id);
-        const { error } = await (supabase.from('freezers') as any).update({ ...basePayload, image_url: imageUrl }).eq('id', editTarget.id);
+        const { error } = await supabase.from('freezers').update({ ...basePayload, image_url: imageUrl }).eq('id', editTarget.id);
         if (error) throw error;
         await syncFreezerZones(editTarget.id, zoneCount);
       } else {
-        const { data: inserted, error } = await (supabase.from('freezers') as any).insert([{ ...basePayload, image_url: null }]).select('id').single();
+        const { data: inserted, error } = await supabase.from('freezers').insert([{ ...basePayload, image_url: null }]).select('id').single();
         if (error) throw error;
         const freezerId = inserted.id;
         await syncFreezerZones(freezerId, zoneCount);
         if (imageFile) {
           const imageUrl = await uploadImage(freezerId);
-          await (supabase.from('freezers') as any).update({ image_url: imageUrl }).eq('id', freezerId);
+          await supabase.from('freezers').update({ image_url: imageUrl }).eq('id', freezerId);
         }
-        const rackInserts: any[] = [];
+        const rackInserts: TablesInsert<'racks'>[] = [];
         shelves.forEach((shelf, shelfIdx) => {
           shelf.racks.forEach((rack) => {
             if (rack.name.trim()) {
@@ -145,7 +147,7 @@ export function FreezersPage() {
           });
         });
         if (rackInserts.length > 0) {
-          const { data: insertedRacks, error: rErr } = await (supabase.from('racks') as any)
+          const { data: insertedRacks, error: rErr } = await supabase.from('racks')
             .insert(rackInserts)
             .select('id');
           if (rErr) throw rErr;
@@ -156,14 +158,14 @@ export function FreezersPage() {
       }
     },
     onSuccess: () => { setUploading(false); queryClient.invalidateQueries({ queryKey: ['freezers'] }); queryClient.invalidateQueries({ queryKey: ['racks'] }); closeDialog(); },
-    onError: (e: any) => { setUploading(false); setFormError(e.message); },
+    onError: (e: Error) => { setUploading(false); setFormError(e.message); },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       // Borrar un congelador elimina sus cajas en cascada (ON DELETE CASCADE) y deja
       // las muestras sin posición, sin pasar por la papelera. Se exige vaciarlo antes.
-      const { count, error: countError } = await (supabase.from('boxes') as any)
+      const { count, error: countError } = await supabase.from('boxes')
         .select('id', { count: 'exact', head: true })
         .eq('freezer_id', id)
         .is('deleted_at', null);

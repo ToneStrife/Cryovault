@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import type { TablesUpdate } from '@/lib/database.types';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Input } from '@/components/ui/input';
@@ -107,7 +108,8 @@ export function SearchPage() {
   const { data: freezers = [] } = useQuery({
     queryKey: ['freezers-search'],
     queryFn: async () => {
-      const { data } = await supabase.from('freezers').select('id, name, temperature').order('name');
+      const { data, error } = await supabase.from('freezers').select('id, name, temperature').order('name');
+      if (error) throw error;
       return (data || []) as Pick<Freezer, 'id' | 'name' | 'temperature'>[];
     },
     enabled: !!user,
@@ -116,10 +118,11 @@ export function SearchPage() {
   const { data: boxes = [] } = useQuery({
     queryKey: ['boxes-search'],
     queryFn: async () => {
-      const { data } = await (supabase.from('boxes') as any)
+      const { data, error } = await supabase.from('boxes')
         .select('id, name, freezer_id')
         .is('deleted_at', null)
         .order('name');
+      if (error) throw error;
       return (data || []) as { id: string; name: string; freezer_id: string }[];
     },
     enabled: !!user,
@@ -154,7 +157,7 @@ export function SearchPage() {
     const lp = patientFilter.toLowerCase();
     return samples.filter((s) => {
       // Soft-delete filter
-      const isDeleted = !!(s as any).deleted_at;
+      const isDeleted = !!s.deleted_at;
       if (!showDeleted && isDeleted) return false;
 
       if (q && !(
@@ -296,16 +299,16 @@ export function SearchPage() {
         notes: editForm.notes.trim() || null,
         updated_at: new Date().toISOString(),
       };
-      const { error } = await (supabase.from('samples') as any).update(payload).eq('id', editTarget.id);
+      const { error } = await supabase.from('samples').update(payload).eq('id', editTarget.id);
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['samples-search'] }); closeEdit(); },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const softDeleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await (supabase.from('samples') as any)
+      const { error } = await supabase.from('samples')
         .update({ deleted_at: new Date().toISOString(), deleted_by: user!.id })
         .in('id', ids);
       if (error) throw error;
@@ -315,7 +318,7 @@ export function SearchPage() {
 
   const restoreMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await (supabase.from('samples') as any)
+      const { error } = await supabase.from('samples')
         .update({ deleted_at: null, deleted_by: null })
         .in('id', ids);
       if (error) throw error;
@@ -325,7 +328,7 @@ export function SearchPage() {
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+      const payload: TablesUpdate<'samples'> = { updated_at: new Date().toISOString() };
       if (bulkApply.patient_code) payload.patient_code = bulkForm.patient_code.trim() || null;
       if (bulkApply.subject_code) payload.subject_code = bulkForm.subject_code.trim() || null;
       if (bulkApply.project) payload.project = bulkForm.project.trim() || null;
@@ -340,7 +343,7 @@ export function SearchPage() {
       if (bulkApply.max_thaws) payload.max_thaws = parseInt(bulkForm.max_thaws) || 3;
       if (bulkApply.notes) payload.notes = bulkForm.notes.trim() || null;
       if (Object.keys(payload).length === 1) throw new Error('Selecciona al menos un campo');
-      const { error } = await (supabase.from('samples') as any).update(payload).in('id', selectedIds);
+      const { error } = await supabase.from('samples').update(payload).in('id', selectedIds);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -349,7 +352,7 @@ export function SearchPage() {
       setBulkApply({});
       clearSelect();
     },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const filterSelectClass = `${selectClass} pl-3 pr-7 py-2 text-gray-700`;
@@ -658,7 +661,7 @@ export function SearchPage() {
                   {filtered.map((s) => {
                     const boxEntry = s.box_id ? boxMap[s.box_id] : null;
                     const fz = boxEntry ? freezerMap[boxEntry.freezer_id] : null;
-                    const isDeleted = !!(s as any).deleted_at;
+                    const isDeleted = !!s.deleted_at;
                     return (
                       <tr
                         key={s.id}
@@ -864,7 +867,7 @@ export function SearchPage() {
                     <input type="checkbox" checked={!!bulkApply[key]} onChange={() => toggleBulkField(key)} className="rounded border-gray-300 text-blue-600" />
                     {label}
                   </span>
-                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
+                  <Input type={type} value={bulkForm[key as keyof typeof bulkForm]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
                 </label>
               ))}
               <label className="space-y-1">

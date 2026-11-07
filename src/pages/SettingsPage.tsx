@@ -120,11 +120,12 @@ export function SettingsPage() {
   const { data: settings } = useQuery({
     queryKey: ['settings', user?.laboratory || 'default_lab'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('settings')
         .select('*')
         .eq('laboratory', user?.laboratory || 'default_lab')
         .maybeSingle();
+      if (error) throw error;
       return data as Settings | null;
     },
     enabled: !!user,
@@ -183,12 +184,12 @@ export function SettingsPage() {
         language: form.language as 'es' | 'en' | 'pt',
       };
       if (settings?.id) {
-        const { error } = await (supabase.from('settings') as any)
+        const { error } = await supabase.from('settings')
           .update(payload)
           .eq('id', settings.id);
         if (error) throw error;
       } else {
-        const { error } = await (supabase.from('settings') as any).insert([payload]);
+        const { error } = await supabase.from('settings').insert([payload]);
         if (error) throw error;
       }
     },

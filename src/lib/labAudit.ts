@@ -9,7 +9,7 @@ export async function logDataOperation(
   operation: LabDataOperation,
   details: Record<string, unknown>,
 ) {
-  const { error } = await (supabase.from('audit_logs') as any).insert([
+  const { error } = await supabase.from('audit_logs').insert([
     {
       user_id: userId,
       entity_type: entityType,

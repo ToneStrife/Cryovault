@@ -7,7 +7,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Download, ArchiveRestore, RotateCcw } from 'lucide-react';
-import type { Sample, Freezer, Box } from '@/types';
+import type { Sample, Freezer, Box, AuditLog } from '@/types';
 import { formatAuditLog, makeUserMap } from '@/lib/auditFormat';
 import { canManageBoxes } from '@/lib/labPermissions';
 import { restoreBoxWithSamples, unarchiveBox, parseDeletedSampleIds } from '@/lib/boxLifecycle';
@@ -29,7 +29,7 @@ const TYPE_COLORS: Record<string, string> = {
   saliva: '#14b8a6', protein: '#f59e0b', other: '#6b7280',
 };
 
-function downloadCSV(rows: any[], filename: string) {
+function downloadCSV(rows: Record<string, unknown>[], filename: string) {
   if (!rows.length) return;
   const keys = Object.keys(rows[0]);
   const csv = [
@@ -63,7 +63,8 @@ export function ReportsPage() {
   const { data: freezers = [] } = useQuery({
     queryKey: ['freezers-report'],
     queryFn: async () => {
-      const { data } = await supabase.from('freezers').select('*').order('name');
+      const { data, error } = await supabase.from('freezers').select('*').order('name');
+      if (error) throw error;
       return (data || []) as Freezer[];
     },
     enabled: !!user,
@@ -72,7 +73,8 @@ export function ReportsPage() {
   const { data: boxes = [] } = useQuery({
     queryKey: ['boxes-report'],
     queryFn: async () => {
-      const { data } = await supabase.from('boxes').select('*').is('deleted_at', null).order('name');
+      const { data, error } = await supabase.from('boxes').select('*').is('deleted_at', null).order('name');
+      if (error) throw error;
       return (data || []) as Box[];
     },
     enabled: !!user,
@@ -110,12 +112,13 @@ export function ReportsPage() {
   const { data: auditLogs = [] } = useQuery({
     queryKey: ['audit-report'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
-      return (data || []) as any[];
+      if (error) throw error;
+      return (data || []) as AuditLog[];
     },
     enabled: !!user,
   });
@@ -123,7 +126,8 @@ export function ReportsPage() {
   const { data: auditProfiles = [] } = useQuery({
     queryKey: ['audit-profiles-report'],
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name, email');
+      const { data, error } = await supabase.from('profiles').select('id, full_name, email');
+      if (error) throw error;
       return (data || []) as { id: string; full_name: string | null; email: string | null }[];
     },
     enabled: !!user,
@@ -382,7 +386,7 @@ export function ReportsPage() {
                   <div className="flex justify-end mb-4">
                     <Button
                       onClick={() => downloadCSV(
-                        auditLogs.map((l: any) => {
+                        auditLogs.map((l) => {
                           const formatted = formatAuditLog(l, auditUserMap);
                           return {
                           fecha: l.created_at,
@@ -406,7 +410,7 @@ export function ReportsPage() {
                     {auditLogs.length === 0 ? (
                       <p className="text-gray-400 text-sm text-center py-4">Sin registros de auditoría</p>
                     ) : (
-                      auditLogs.map((log: any) => {
+                      auditLogs.map((log) => {
                         const formatted = formatAuditLog(log, auditUserMap);
                         return (
                           <div key={log.id} className="flex items-start gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm">

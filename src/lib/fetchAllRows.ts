@@ -19,7 +19,7 @@ export async function fetchAllSamples<T>(
   const ascending = options?.orderBy?.ascending ?? false;
 
   while (true) {
-    let query = (supabase.from('samples') as any)
+    let query = supabase.from('samples')
       .select(select)
       // Orden secundario por id para que la paginación sea estable con valores repetidos.
       .order(orderColumn, { ascending })

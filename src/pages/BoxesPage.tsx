@@ -152,7 +152,7 @@ export function BoxesPage() {
   const { data: racks = [] } = useQuery({
     queryKey: ['all-racks'],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('racks') as any).select('*');
+      const { data, error } = await supabase.from('racks').select('*');
       if (error) throw error;
       return data as Rack[];
     },
@@ -230,14 +230,14 @@ export function BoxesPage() {
         image_url: null as string | null,
         created_by: user!.id,
       };
-      const { data: inserted, error } = await (supabase.from('boxes') as any)
+      const { data: inserted, error } = await supabase.from('boxes')
         .insert([payload])
         .select('id')
         .single();
       if (error) throw error;
       if (imageFile) {
         const imageUrl = await uploadBoxImage(inserted.id);
-        await (supabase.from('boxes') as any).update({ image_url: imageUrl }).eq('id', inserted.id);
+        await supabase.from('boxes').update({ image_url: imageUrl }).eq('id', inserted.id);
       }
       return inserted;
     },
@@ -247,12 +247,12 @@ export function BoxesPage() {
       queryClient.invalidateQueries({ queryKey: ['freezer-box-counts'] });
       closeAddDialog();
     },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const renameMutation = useMutation({
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      const { error } = await (supabase.from('boxes') as any).update({ name }).eq('id', id);
+      const { error } = await supabase.from('boxes').update({ name }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
