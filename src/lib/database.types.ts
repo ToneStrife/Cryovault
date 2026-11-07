@@ -1,4 +1,4 @@
-// Generado desde el proyecto Supabase yyfthcebyqylhjkrzsph el 2026-11-07.
+// Generado desde el proyecto Supabase yyfthcebyqylhjkrzsph el 2026-11-07 (tras la migración 021).
 // Regenerar con: npx supabase gen types typescript --linked > src/lib/database.types.ts
 
 export type Json =
@@ -669,40 +669,68 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assert_cell_free: {
+        Args: {
+          p_box: string
+          p_col: number
+          p_exclude?: string
+          p_row: number
+        }
+        Returns: undefined
+      }
       box_in_my_lab: { Args: { p_box: string }; Returns: boolean }
+      checkout_box: { Args: { p_box_id: string }; Returns: Json }
+      checkout_samples: { Args: { p_sample_ids: string[] }; Returns: Json }
       complete_user_onboarding: { Args: never; Returns: undefined }
       current_user_laboratory: { Args: never; Returns: string }
       current_user_role: { Args: never; Returns: string }
       get_my_lab: { Args: never; Returns: string }
       get_my_role: { Args: never; Returns: string }
+      log_sample_movement: {
+        Args: {
+          p_from_box: string
+          p_from_position: string
+          p_notes: string
+          p_sample_id: string
+          p_to_box: string
+          p_to_position: string
+        }
+        Returns: undefined
+      }
+      move_sample: {
+        Args: { p_col: number; p_row: number; p_sample_id: string }
+        Returns: undefined
+      }
+      place_sample: {
+        Args: {
+          p_box_id: string
+          p_col: number
+          p_reason?: string
+          p_row: number
+          p_sample_id: string
+        }
+        Returns: undefined
+      }
+      position_label: {
+        Args: { p_col: number; p_row: number }
+        Returns: string
+      }
       profile_laboratory: { Args: { p_user: string }; Returns: string }
       recalculate_box_occupancy: {
         Args: { target_box_id: string }
         Returns: undefined
       }
-      // --- Añadidas a mano (migración 021). Al regenerar el archivo tras aplicarla, salen solas. ---
-      assert_cell_free: {
-        Args: { p_box: string; p_row: number; p_col: number; p_exclude?: string | null }
+      remove_sample_from_box: {
+        Args: { p_sample_id: string }
         Returns: undefined
       }
-      checkout_samples: { Args: { p_sample_ids: string[] }; Returns: Json }
-      checkout_box: { Args: { p_box_id: string }; Returns: Json }
       return_box: { Args: { p_box_id: string }; Returns: undefined }
       return_sample: {
-        Args: { p_sample_id: string; p_row: number; p_col: number }
+        Args: { p_col: number; p_row: number; p_sample_id: string }
         Returns: undefined
       }
-      place_sample: {
-        Args: { p_sample_id: string; p_box_id: string; p_row: number; p_col: number; p_reason?: string }
-        Returns: undefined
-      }
-      move_sample: {
-        Args: { p_sample_id: string; p_row: number; p_col: number }
-        Returns: undefined
-      }
-      remove_sample_from_box: { Args: { p_sample_id: string }; Returns: undefined }
       save_user_permissions: {
-        Args: { p_user_id: string; p_laboratory: string; p_overrides: Json }
+        Args: { p_laboratory: string; p_overrides: Json; p_user_id: string }
         Returns: undefined
       }
     }
