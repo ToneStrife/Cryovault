@@ -1,0 +1,1 @@
+const p="px-4 sm:px-6 lg:px-8",a="px-4 sm:px-6 lg:px-8 py-4 lg:py-6",m="max-w-[calc(100vw-1.5rem)] sm:max-w-lg max-h-[min(90vh,calc(100dvh-2rem))] overflow-y-auto p-4 sm:p-6";export{m as D,a as P,p as a};
