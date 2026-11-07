@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { fetchAllSamples } from '@/lib/fetchAllRows';
 import { downloadWorkbook } from '@/lib/spreadsheet';
 import type { Box, Freezer, Rack, Sample } from '@/types';
 
@@ -42,12 +43,10 @@ export async function fetchLabExportData(laboratory: string) {
     .order('name');
   if (boxErr) throw boxErr;
 
-  const { data: samples, error: sampleErr } = await (supabase.from('samples') as any)
-    .select('*')
-    .eq('laboratory', laboratory)
-    .is('deleted_at', null)
-    .order('sample_code');
-  if (sampleErr) throw sampleErr;
+  const samples = await fetchAllSamples<Sample>('*', {
+    laboratory,
+    orderBy: { column: 'sample_code', ascending: true },
+  });
 
   return {
     freezers: (freezers ?? []) as Freezer[],

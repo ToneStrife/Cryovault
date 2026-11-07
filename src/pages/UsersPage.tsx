@@ -153,7 +153,7 @@ export function UsersPage() {
       if (error) throw error;
       return data as Profile[];
     },
-    enabled: !!user && isLabAdmin,
+    enabled: !!user && canManageUsers,
   });
 
   const { data: laboratories = [] } = useQuery({
@@ -171,7 +171,10 @@ export function UsersPage() {
   const { data: invites = [] } = useQuery({
     queryKey: ['invites', user?.role, user?.laboratory],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('invites') as any).select('*').order('created_at', { ascending: false });
+      // Columnas explícitas: temporary_password solo es accesible desde la Edge Function.
+      const { data, error } = await (supabase.from('invites') as any)
+        .select('id, email, role, invited_by, laboratory, created_at, accepted_at')
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as any[];
     },

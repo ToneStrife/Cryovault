@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSamples } from '@/lib/fetchAllRows';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -54,8 +55,7 @@ export function ReportsPage() {
   const { data: samples = [] } = useQuery({
     queryKey: ['samples-report'],
     queryFn: async () => {
-      const { data } = await supabase.from('samples').select('*').is('deleted_at', null).order('created_at', { ascending: false });
-      return (data || []) as Sample[];
+      return fetchAllSamples<Sample>('*');
     },
     enabled: !!user,
   });

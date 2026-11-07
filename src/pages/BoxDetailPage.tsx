@@ -315,7 +315,8 @@ export function BoxDetailPage() {
   const selectedIds = Array.from(selected);
   const toggleSelect = (id: string) => setSelected((prev) => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     return next;
   });
   const clearSelect = () => setSelected(new Set());
@@ -931,7 +932,7 @@ export function BoxDetailPage() {
     ctx.fillStyle = '#9ca3af';
     ctx.textAlign = 'left';
     ctx.font = '9px ui-monospace, monospace';
-    ctx.fillText(`Generado: ${new Date().toLocaleString('es-ES')}`, PAD, canvasW - 10);
+    ctx.fillText(`Generado: ${new Date().toLocaleString('es-ES')}`, PAD, canvasH - 10);
 
     canvas.toBlob((blob) => {
       if (blob) triggerBlobDownload(blob, `${box.name}-grid.png`);
@@ -987,7 +988,15 @@ export function BoxDetailPage() {
     if (!importPreview || !box) return;
     setImportLoading(true);
     setImportPreview(null);
-    const rows = await parseFileToRows(importPreview.file);
+    let rows: Record<string, string>[];
+    try {
+      rows = await parseFileToRows(importPreview.file);
+    } catch {
+      setImportResult({ imported: 0, errors: [{ row: 1, message: 'No se pudo leer el archivo. Usa formato .xlsx, .xls o .csv' }] });
+      setImportLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     const errors: { row: number; message: string }[] = [];
     let imported = 0;
 
@@ -1037,14 +1046,20 @@ export function BoxDetailPage() {
 
   // --- Print ---
   const handlePrint = () => {
-    const style = document.createElement('style');
-    style.id = 'cryo-print-style';
-    style.textContent = `@media print { body > * { display: none !important; } #cryo-print-area { display: block !important; position: fixed; top: 0; left: 0; width: 100%; } }`;
-    document.head.appendChild(style);
+    // Las reglas de impresión viven en index.css (.cryo-printing): ocultar el
+    // ancestro con display:none impedía mostrar el área, que está dentro de #root.
     const area = document.getElementById('cryo-print-area');
     if (area) area.style.display = 'block';
+    document.body.classList.add('cryo-printing');
+    const cleanup = () => {
+      document.body.classList.remove('cryo-printing');
+      if (area) area.style.display = 'none';
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     window.print();
-    setTimeout(() => { style.remove(); if (area) area.style.display = 'none'; }, 500);
+    // Respaldo para navegadores que no disparan afterprint.
+    setTimeout(cleanup, 1500);
   };
 
   const qrUrl = boxId

@@ -18,9 +18,15 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       setMustSetPassword(false);
       return;
     }
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setMustSetPassword(needsPasswordSetup(user));
-    });
+    supabase.auth
+      .getUser()
+      .then(({ data: { user } }) => {
+        setMustSetPassword(needsPasswordSetup(user));
+      })
+      .catch(() => {
+        // Si no se puede leer el usuario (red, token caducado) no bloqueamos la app.
+        setMustSetPassword(false);
+      });
   }, [isAuthenticated]);
 
   if (isLoading || (isAuthenticated && mustSetPassword === null)) {

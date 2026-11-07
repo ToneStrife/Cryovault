@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { appPath } from '@/lib/appUrl';
 import type { Profile } from '@/types'
@@ -16,13 +17,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Trazas de autenticación solo en desarrollo (en producción no se registran ids de usuario).
+const debug = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(...args)
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      console.log("[AuthContext] Fetching profile for:", userId)
+      debug("[AuthContext] Fetching profile for:", userId)
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -33,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("[AuthContext] Error fetching profile:", error)
         return null
       }
-      console.log("[AuthContext] Profile fetched:", data?.id)
+      debug("[AuthContext] Profile fetched:", data?.id)
       return data
     } catch (e) {
       console.error("[AuthContext] Unexpected error fetching profile:", e)
@@ -45,21 +51,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true
     let authInitialized = false
 
-    const initializeAuth = async (session: any, event: string) => {
+    const initializeAuth = async (session: Session | null, event: string) => {
       if (!isMounted) return
-      console.log(`[AuthContext] Initializing auth: ${event}`, session?.user?.id)
+      debug(`[AuthContext] Initializing auth: ${event}`, session?.user?.id)
       
       try {
         if (session?.user) {
           const profile = await fetchProfile(session.user.id)
           if (isMounted) {
             setUser(profile)
-            console.log("[AuthContext] User set from profile")
+            debug("[AuthContext] User set from profile")
           }
         } else {
           if (isMounted) {
             setUser(null)
-            console.log("[AuthContext] No session, user set to null")
+            debug("[AuthContext] No session, user set to null")
           }
         }
       } catch (e) {
@@ -68,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (isMounted) {
           setIsLoading(false)
           authInitialized = true
-          console.log("[AuthContext] isLoading set to false")
+          debug("[AuthContext] isLoading set to false")
         }
       }
     }
@@ -82,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[AuthContext] Auth state change event: ${event}`, session?.user?.id)
+      debug(`[AuthContext] Auth state change event: ${event}`, session?.user?.id)
       
       if (event === 'SIGNED_OUT') {
         if (isMounted) {
@@ -119,7 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile])
 
 
-  const signUp = async (_email: string, _password: string, _fullName: string) => {
+  const signUp = async () => {
     throw new Error('El registro se realiza desde una invitación por email. Pide a un administrador que te invite.')
   }
 

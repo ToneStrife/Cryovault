@@ -16,6 +16,12 @@ export function QrScannerDialog({ open, onClose }: Props) {
   const scannerRef = useRef<any>(null);
   const [state, setState] = useState<ScanState>('scanning');
   const [resultMsg, setResultMsg] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  // Refs para no reiniciar la cámara cada vez que el padre vuelve a renderizar.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   useEffect(() => {
     if (!open) return;
@@ -34,14 +40,26 @@ export function QrScannerDialog({ open, onClose }: Props) {
           { fps: 10, qrbox: { width: 250, height: 250 } },
           async (decodedText: string) => {
             // Stop scanning immediately
-            try { await scanner.stop(); } catch {}
+            try { await scanner.stop(); } catch { /* ya parado */ }
 
-            // Lookup box by id or qr_code
-            const { data } = await (supabase as any)
+            // El texto del QR va a un filtro de PostgREST: solo se interpola si es un UUID
+            // (si no, comas o paréntesis alterarían la consulta y un no-UUID daría error).
+            const text = decodedText.trim();
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
+            const base = (supabase as any)
               .from('boxes')
               .select('id, name, freezer_id')
-              .or(`id.eq.${decodedText},qr_code.eq.${decodedText}`)
-              .maybeSingle();
+              .is('deleted_at', null);
+            const { data, error } = await (isUuid
+              ? base.or(`id.eq.${text},qr_code.eq.${text}`)
+              : base.eq('qr_code', text)
+            ).maybeSingle();
+
+            if (error) {
+              setState('error');
+              setResultMsg(error.message);
+              return;
+            }
 
             const box = data as { id: string; name: string; freezer_id: string } | null;
 
@@ -49,8 +67,8 @@ export function QrScannerDialog({ open, onClose }: Props) {
               setState('found');
               setResultMsg(box.name);
               setTimeout(() => {
-                onClose();
-                navigate(`/box/${box.id}`);
+                onCloseRef.current();
+                navigateRef.current(`/box/${box.id}`);
               }, 1200);
             } else {
               setState('not_found');
@@ -71,7 +89,7 @@ export function QrScannerDialog({ open, onClose }: Props) {
       scannerRef.current?.stop?.().catch(() => {});
       scannerRef.current = null;
     };
-  }, [open]);
+  }, [open, attempt]);
 
   if (!open) return null;
 
@@ -123,7 +141,7 @@ export function QrScannerDialog({ open, onClose }: Props) {
                 <p className="text-sm font-medium">QR no reconocido</p>
                 <p className="text-xs text-amber-600 font-mono mt-0.5">{resultMsg}</p>
                 <button
-                  onClick={() => { setState('scanning'); scannerRef.current?.start?.(); }}
+                  onClick={() => setAttempt((n) => n + 1)}
                   className="text-xs text-amber-700 underline mt-1"
                 >
                   Intentar de nuevo

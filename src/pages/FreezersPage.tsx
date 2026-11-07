@@ -81,7 +81,7 @@ export function FreezersPage() {
   const { data: boxCounts = {} } = useQuery({
     queryKey: ['freezer-box-counts'],
     queryFn: async () => {
-      const { data } = await (supabase.from('boxes') as any).select('freezer_id');
+      const { data } = await (supabase.from('boxes') as any).select('freezer_id').is('deleted_at', null);
       const counts: Record<string, number> = {};
       (data || []).forEach((b: any) => { counts[b.freezer_id] = (counts[b.freezer_id] || 0) + 1; });
       return counts;
@@ -161,10 +161,21 @@ export function FreezersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      // Borrar un congelador elimina sus cajas en cascada (ON DELETE CASCADE) y deja
+      // las muestras sin posición, sin pasar por la papelera. Se exige vaciarlo antes.
+      const { count, error: countError } = await (supabase.from('boxes') as any)
+        .select('id', { count: 'exact', head: true })
+        .eq('freezer_id', id)
+        .is('deleted_at', null);
+      if (countError) throw countError;
+      if ((count ?? 0) > 0) {
+        throw new Error(`El congelador tiene ${count} caja(s). Mueve o elimina las cajas antes de borrarlo.`);
+      }
       const { error } = await supabase.from('freezers').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['freezers'] }),
+    onError: (e: Error) => alert(e.message),
   });
 
   const openCreate = () => {

@@ -24,3 +24,10 @@ dist-ssr
 *.sln
 *.sw?
 .dyad/
+
+# Build caches and artifacts (added in audit 2026-11-07)
+.vite
+*.tsbuildinfo
+/assets
+.bolt
+supabase/.temp

@@ -21,30 +21,17 @@ export default defineConfig({
         start_url: '/Cryovault/',
         scope: '/Cryovault/',
         icons: [
-          {
-            src: 'pwa-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: 'pwa-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: 'pwa-512-maskable.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
         navigateFallback: '/Cryovault/index.html',
         navigateFallbackDenylist: [/^\/Cryovault\/api\//],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
+        // Los chunks por ruta hacen que el precache supere los 2 MB por defecto.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
     }),
   ],
@@ -57,5 +44,20 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
+  },
+  build: {
+    // Librerías pesadas en chunks propios con caché estable entre despliegues.
+    rollupOptions: {
+      output: {
+        // Solo las librerías de carga inicial. recharts, xlsx y html5-qrcode las usan
+        // únicamente páginas perezosas, así que Rollup ya las separa solo; forzarlas
+        // en un chunk manual hacía que el login descargara el chunk de gráficas.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js'],
+          query: ['@tanstack/react-query'],
+        },
+      },
+    },
   },
 });

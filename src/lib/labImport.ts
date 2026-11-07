@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { fetchAllSamples } from '@/lib/fetchAllRows';
 import { parseFileSheetRows } from '@/lib/spreadsheet';
 import { positionLabel } from '@/lib/positionUtils';
 import type { Box, Freezer, SampleStatus, SampleType, UnitType } from '@/types';
@@ -111,11 +112,12 @@ export async function runLabImport(
     .is('deleted_at', null);
   if (boxErr) throw boxErr;
 
-  const { data: existingSamples, error: sampErr } = await (supabase.from('samples') as any)
-    .select('sample_code, box_id, position_row, position_column')
-    .eq('laboratory', ctx.laboratory)
-    .is('deleted_at', null);
-  if (sampErr) throw sampErr;
+  const existingSamples = await fetchAllSamples<{
+    sample_code: string;
+    box_id: string | null;
+    position_row: number | null;
+    position_column: number | null;
+  }>('sample_code, box_id, position_row, position_column', { laboratory: ctx.laboratory });
 
   const existingCodes = new Set((existingSamples ?? []).map((s: { sample_code: string }) => s.sample_code.toLowerCase()));
   const lookups = buildBoxLookups(

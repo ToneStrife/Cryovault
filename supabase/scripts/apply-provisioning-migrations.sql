@@ -79,3 +79,49 @@ GRANT EXECUTE ON FUNCTION public.complete_user_onboarding() TO authenticated;
 
 -- Reload PostgREST schema cache (optional; Supabase usually picks this up within seconds)
 NOTIFY pgrst, 'reload schema';
+
+-- ============================================================================
+-- 019 (auditoría 2026-11-07): handle_new_user NO debe confiar en los metadatos
+-- del usuario. Esta versión sustituye a la de arriba (CREATE OR REPLACE posterior
+-- gana). Para el resto de correcciones de seguridad aplica la migración completa
+-- supabase/migrations/20261107120000_019_security_hardening.sql.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  pending_invite RECORD;
+BEGIN
+  SELECT role, laboratory
+    INTO pending_invite
+  FROM public.invites
+  WHERE lower(email) = lower(NEW.email)
+    AND accepted_at IS NULL
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF pending_invite.laboratory IS NULL OR trim(pending_invite.laboratory) = '' THEN
+    RAISE EXCEPTION 'User registration requires an invitation with a laboratory';
+  END IF;
+
+  IF pending_invite.role NOT IN ('super_admin', 'admin', 'researcher', 'technician', 'read_only') THEN
+    RAISE EXCEPTION 'Invalid invited role';
+  END IF;
+
+  INSERT INTO public.profiles (id, email, full_name, laboratory, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NULLIF(trim(NEW.raw_user_meta_data->>'full_name'), ''), NEW.email),
+    pending_invite.laboratory,
+    pending_invite.role
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;

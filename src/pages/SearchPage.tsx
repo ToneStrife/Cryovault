@@ -60,7 +60,7 @@ export function SearchPage() {
   const [copiedSampleId, setCopiedSampleId] = useState<string | null>(null);
 
   useEffect(() => {
-    const code = searchParams.get('code');
+    const code = searchParams.get('code') ?? searchParams.get('q');
     if (code) setQ(code);
   }, [searchParams]);
   const [statusFilter, setStatusFilter] = useState('');
@@ -250,7 +250,8 @@ export function SearchPage() {
   const selectedIds = Array.from(selected);
   const toggleSelect = (id: string) => setSelected((prev) => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     return next;
   });
   const selectAllFiltered = () => setSelected(new Set(filtered.map((s) => s.id)));

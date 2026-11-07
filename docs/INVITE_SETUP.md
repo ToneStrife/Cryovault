@@ -2,6 +2,12 @@
 
 CryoVault solo permite altas por administrador. El flujo es: **admin crea usuario con contraseña provisional** → usuario inicia sesión en `/login` → **cambia contraseña** en el primer acceso → accede al laboratorio.
 
+## Requisito de seguridad (auditoría 2026-11-07)
+
+1. Aplica la migración `supabase/migrations/20261107120000_019_security_hardening.sql` (`npx supabase db push` o pegándola en el SQL Editor). Hasta entonces, el trigger que crea perfiles acepta el rol y el laboratorio que envíe el propio cliente al registrarse.
+2. Desactiva **Authentication → Providers → Email → Allow new users to sign up**. CryoVault nunca usa el registro público: las cuentas las crea la Edge Function con la clave de servicio, que no depende de ese ajuste.
+3. La contraseña provisional guardada en `invites.temporary_password` deja de ser legible desde el cliente; «Ver credenciales» sigue funcionando porque pasa por la Edge Function.
+
 ## Solo GitHub no basta
 
 El push a `main` despliega **solo el frontend** en GitHub Pages (workflow `.github/workflows/deploy.yml`).

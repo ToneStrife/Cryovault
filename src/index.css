@@ -2,6 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Impresión de la cuadrícula de una caja (BoxDetailPage.handlePrint). */
+@media print {
+  body.cryo-printing * {
+    visibility: hidden;
+  }
+  body.cryo-printing #cryo-print-area,
+  body.cryo-printing #cryo-print-area * {
+    visibility: visible;
+  }
+  body.cryo-printing #cryo-print-area {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

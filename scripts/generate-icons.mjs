@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import toIco from 'to-ico';
+import pngToIco from 'png-to-ico';
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -47,7 +47,7 @@ async function writeFaviconIco() {
   const buffers = await Promise.all(
     sizes.map((s) => sharp(iconSvg).resize(s, s).png().toBuffer()),
   );
-  writeFileSync(join(publicDir, 'favicon.ico'), await toIco(buffers));
+  writeFileSync(join(publicDir, 'favicon.ico'), await pngToIco(buffers));
 }
 
 async function main() {

@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSamples } from '@/lib/fetchAllRows';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Snowflake, Package2, FlaskConical, TrendingUp, ArrowRight, Clock, Search, X, QrCode } from 'lucide-react';
@@ -58,12 +59,11 @@ export function DashboardPage() {
   const statsQuery = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
-      const [freezersRes, boxesRes, samplesRes] = await Promise.all([
+      const [freezersRes, boxesRes, sampleData] = await Promise.all([
         supabase.from('freezers').select('id', { count: 'exact', head: true }),
-        supabase.from('boxes').select('id', { count: 'exact', head: true }),
-        supabase.from('samples').select('id, status, sample_type'),
+        (supabase.from('boxes') as any).select('id', { count: 'exact', head: true }).is('deleted_at', null),
+        fetchAllSamples<{ id: string; status: string; sample_type: string }>('id, status, sample_type'),
       ]);
-      const sampleData = (samplesRes.data || []) as Array<{ id: string; status: string; sample_type: string }>;
       const activeSamples = sampleData.filter((s) => s.status === 'active').length;
       const byType: Record<string, number> = {};
       const byStatus: Record<string, number> = {};
@@ -118,11 +118,13 @@ export function DashboardPage() {
   const quickSearchQuery = useQuery({
     queryKey: ['quick-search', quickSearch],
     queryFn: async () => {
-      if (!quickSearch.trim() || quickSearch.length < 2) return [];
-      const { data } = await supabase
-        .from('samples')
+      // Los caracteres , ( ) % y \ tienen significado en los filtros de PostgREST.
+      const term = quickSearch.replace(/[,()%\\]/g, ' ').trim();
+      if (term.length < 2) return [];
+      const { data } = await (supabase.from('samples') as any)
         .select('id, sample_code, sample_type, status, project, box_id, position_label, patient_code')
-        .or(`sample_code.ilike.%${quickSearch}%,patient_code.ilike.%${quickSearch}%,project.ilike.%${quickSearch}%`)
+        .is('deleted_at', null)
+        .or(`sample_code.ilike.%${term}%,patient_code.ilike.%${term}%,project.ilike.%${term}%`)
         .limit(8);
       return (data || []) as any[];
     },

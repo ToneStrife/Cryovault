@@ -10,7 +10,7 @@ This document outlines the technical stack and coding standards for the CryoVaul
 *   **UI Components:** shadcn/ui (built on Radix UI) for accessible and customizable interface elements.
 *   **Backend & Auth:** Supabase for real-time database (PostgreSQL), Authentication, and File Storage.
 *   **Data Fetching:** TanStack Query (React Query) for server state management, caching, and synchronization.
-*   **State Management:** Zustand for lightweight and performant global client-side state.
+*   **State Management:** React state + TanStack Query cache (no global store library).
 *   **Routing:** React Router for declarative client-side navigation.
 *   **Icons:** Lucide React for a consistent, modern, and lightweight icon set.
 *   **Data Visualization:** Recharts for interactive and responsive dashboard analytics.
@@ -25,9 +25,9 @@ This document outlines the technical stack and coding standards for the CryoVaul
 
 ### Data & Logic
 *   **Server State:** Use TanStack Query (`useQuery`, `useMutation`) for all interactions with Supabase. Do not use `useEffect` for data fetching.
-*   **Forms:** Use `react-hook-form` combined with `zod` for schema validation.
-*   **Dates:** Use `date-fns` for all date formatting and manipulation.
-*   **Excel/CSV:** Use `xlsx` for spreadsheet generation and `papaparse` for CSV parsing.
+*   **Forms:** Controlled inputs with manual validation (`react-hook-form` is available via `components/ui/form.tsx`; no zod).
+*   **Dates:** Use the native `Intl.DateTimeFormat` / `toLocale*` APIs (no date library).
+*   **Excel/CSV:** Use `xlsx` (SheetJS, installed from cdn.sheetjs.com) via `src/lib/spreadsheet.ts`.
 
 ### Architecture
 *   **File Structure:** 
