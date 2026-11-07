@@ -452,25 +452,17 @@ export function UsersPage() {
     setPermError('');
     try {
       const roleDefaults = ROLE_PERMISSIONS[permEditUser.role as UserRole] || [];
-      for (const p of PERMISSIONS) {
-        const granted = permState[p.action] ?? false;
-        const defaultGranted = roleDefaults.includes(p.action);
-        if (granted !== defaultGranted) {
-          const { error } = await supabase.from('user_permissions').upsert({
-            user_id: permEditUser.id,
-            action: p.action,
-            granted,
-            laboratory: permEditUser.laboratory,
-          }, { onConflict: 'user_id,action' });
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('user_permissions')
-            .delete()
-            .eq('user_id', permEditUser.id)
-            .eq('action', p.action);
-          if (error) throw error;
-        }
-      }
+      // Solo se guardan las diferencias respecto al rol; el resto se borra.
+      // Todo en una transacción (función save_user_permissions, migración 021).
+      const overrides = PERMISSIONS
+        .map((p) => ({ action: p.action, granted: permState[p.action] ?? false }))
+        .filter((o) => o.granted !== roleDefaults.includes(o.action));
+      const { error } = await supabase.rpc('save_user_permissions', {
+        p_user_id: permEditUser.id,
+        p_laboratory: permEditUser.laboratory,
+        p_overrides: overrides,
+      });
+      if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
       setPermEditUser(null);
     } catch (err: unknown) {

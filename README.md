@@ -48,7 +48,7 @@ Las migraciones viven en `supabase/migrations/` y **no se aplican solas** al hac
 npx supabase db push
 ```
 
-La migración `019_security_hardening` (auditoría 2026-11-07) es obligatoria: cierra una vía de escalado de privilegios en el alta de usuarios. Además hay que desactivar el registro público en **Authentication → Providers → Email → Allow new users to sign up** (los usuarios solo se crean desde Usuarios, vía Edge Function). Detalle en [docs/AUDITORIA-2026-11-07.md](docs/AUDITORIA-2026-11-07.md).
+Las migraciones `019_security_hardening`, `020_advisor_cleanup` y `021_transactional_rpcs` (auditoría 2026-11-07) son obligatorias: sin la 021, sacar, devolver, colocar o mover muestras y guardar permisos fallan porque la app llama a funciones RPC que aún no existen. La 019: cierra una vía de escalado de privilegios en el alta de usuarios. Además hay que desactivar el registro público en **Authentication → Providers → Email → Allow new users to sign up** (los usuarios solo se crean desde Usuarios, vía Edge Function). Detalle en [docs/AUDITORIA-2026-11-07.md](docs/AUDITORIA-2026-11-07.md).
 
 ## Backup
 

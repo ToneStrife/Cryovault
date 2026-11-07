@@ -680,6 +680,31 @@ export type Database = {
         Args: { target_box_id: string }
         Returns: undefined
       }
+      // --- Añadidas a mano (migración 021). Al regenerar el archivo tras aplicarla, salen solas. ---
+      assert_cell_free: {
+        Args: { p_box: string; p_row: number; p_col: number; p_exclude?: string | null }
+        Returns: undefined
+      }
+      checkout_samples: { Args: { p_sample_ids: string[] }; Returns: Json }
+      checkout_box: { Args: { p_box_id: string }; Returns: Json }
+      return_box: { Args: { p_box_id: string }; Returns: undefined }
+      return_sample: {
+        Args: { p_sample_id: string; p_row: number; p_col: number }
+        Returns: undefined
+      }
+      place_sample: {
+        Args: { p_sample_id: string; p_box_id: string; p_row: number; p_col: number; p_reason?: string }
+        Returns: undefined
+      }
+      move_sample: {
+        Args: { p_sample_id: string; p_row: number; p_col: number }
+        Returns: undefined
+      }
+      remove_sample_from_box: { Args: { p_sample_id: string }; Returns: undefined }
+      save_user_permissions: {
+        Args: { p_user_id: string; p_laboratory: string; p_overrides: Json }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
