@@ -40,7 +40,7 @@ export function ReturnSampleDialog({ sample, open, onClose, onSuccess }: ReturnS
   const { data: boxSamples = [] } = useQuery({
     queryKey: ['return-box-samples', boxId],
     queryFn: async () => {
-      const { data, error: err } = await (supabase.from('samples') as any)
+      const { data, error: err } = await supabase.from('samples')
         .select('position_row, position_column')
         .eq('box_id', boxId)
         .is('deleted_at', null)

@@ -30,13 +30,13 @@ export async function fetchLabExportData(laboratory: string) {
     };
   }
 
-  const { data: racks, error: rackErr } = await (supabase.from('racks') as any)
+  const { data: racks, error: rackErr } = await supabase.from('racks')
     .select('*')
     .in('freezer_id', freezerIds)
     .order('shelf_number');
   if (rackErr) throw rackErr;
 
-  const { data: boxes, error: boxErr } = await (supabase.from('boxes') as any)
+  const { data: boxes, error: boxErr } = await supabase.from('boxes')
     .select('*')
     .in('freezer_id', freezerIds)
     .is('deleted_at', null)

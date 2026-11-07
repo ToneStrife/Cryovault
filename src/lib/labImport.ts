@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { fetchAllSamples } from '@/lib/fetchAllRows';
+import type { TablesInsert } from '@/lib/database.types';
 import { parseFileSheetRows } from '@/lib/spreadsheet';
 import { positionLabel } from '@/lib/positionUtils';
 import type { Box, Freezer, SampleStatus, SampleType, UnitType } from '@/types';
@@ -106,7 +107,7 @@ export async function runLabImport(
     return { imported: 0, skipped: 0, errors: [{ row: 0, message: 'No hay congeladores en el laboratorio' }] };
   }
 
-  const { data: boxes, error: boxErr } = await (supabase.from('boxes') as any)
+  const { data: boxes, error: boxErr } = await supabase.from('boxes')
     .select('*')
     .in('freezer_id', freezerIds)
     .is('deleted_at', null);
@@ -127,7 +128,7 @@ export async function runLabImport(
   );
 
   const errors: LabImportRowError[] = [];
-  const toInsert: Record<string, unknown>[] = [];
+  const toInsert: TablesInsert<'samples'>[] = [];
   let skipped = 0;
 
   for (let i = 0; i < rows.length; i++) {
@@ -228,7 +229,7 @@ export async function runLabImport(
   let imported = 0;
   for (let i = 0; i < toInsert.length; i += BATCH) {
     const batch = toInsert.slice(i, i + BATCH);
-    const { error } = await (supabase.from('samples') as any).insert(batch);
+    const { error } = await supabase.from('samples').insert(batch);
     if (error) {
       errors.push({ row: 0, message: `Error en lote ${i / BATCH + 1}: ${error.message}` });
       break;

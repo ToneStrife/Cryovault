@@ -10,7 +10,7 @@ function clampZoneCount(zoneCount: number) {
 /** Throws if racks or boxes are assigned to zones that would be removed. */
 export async function assertFreezerZonesCanReduce(freezerId: string, newCount: number) {
   const count = clampZoneCount(newCount);
-  const { data: racks, error: racksErr } = await (supabase.from('racks') as any)
+  const { data: racks, error: racksErr } = await supabase.from('racks')
     .select('id')
     .eq('freezer_id', freezerId)
     .gt('shelf_number', count);
@@ -19,7 +19,7 @@ export async function assertFreezerZonesCanReduce(freezerId: string, newCount: n
     throw new Error('No se puede reducir: hay racks en zonas que se eliminarían.');
   }
 
-  const { data: boxes, error: boxesErr } = await (supabase.from('boxes') as any)
+  const { data: boxes, error: boxesErr } = await supabase.from('boxes')
     .select('id')
     .eq('freezer_id', freezerId)
     .gt('shelf_number', count);
@@ -32,7 +32,7 @@ export async function assertFreezerZonesCanReduce(freezerId: string, newCount: n
 export async function syncFreezerZones(freezerId: string, zoneCount: number) {
   const count = clampZoneCount(zoneCount);
 
-  const { data: existing, error: selectError } = await (supabase.from('freezer_zones') as any)
+  const { data: existing, error: selectError } = await supabase.from('freezer_zones')
     .select('*')
     .eq('freezer_id', freezerId);
   if (selectError) throw selectError;
@@ -48,7 +48,7 @@ export async function syncFreezerZones(freezerId: string, zoneCount: number) {
   const existingNums = new Set((existing || []).map((z: FreezerZone) => z.zone_number));
   for (let n = 1; n <= count; n++) {
     if (!existingNums.has(n)) {
-      const { error } = await (supabase.from('freezer_zones') as any).insert([{
+      const { error } = await supabase.from('freezer_zones').insert([{
         freezer_id: freezerId,
         zone_number: n,
         name: `Zona ${n}`,
@@ -58,20 +58,20 @@ export async function syncFreezerZones(freezerId: string, zoneCount: number) {
     }
   }
 
-  const { error: deleteError } = await (supabase.from('freezer_zones') as any)
+  const { error: deleteError } = await supabase.from('freezer_zones')
     .delete()
     .eq('freezer_id', freezerId)
     .gt('zone_number', count);
   if (deleteError) throw deleteError;
 
-  const { error: freezerError } = await (supabase.from('freezers') as any)
+  const { error: freezerError } = await supabase.from('freezers')
     .update({ shelf_count: count, updated_at: new Date().toISOString() })
     .eq('id', freezerId);
   if (freezerError) throw freezerError;
 }
 
 export async function fetchFreezerZones(freezerId: string): Promise<FreezerZone[]> {
-  const { data, error } = await (supabase.from('freezer_zones') as any)
+  const { data, error } = await supabase.from('freezer_zones')
     .select('*')
     .eq('freezer_id', freezerId)
     .order('sort_order', { ascending: true });

@@ -159,7 +159,7 @@ export function UsersPage() {
   const { data: laboratories = [] } = useQuery({
     queryKey: ['laboratories'],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('laboratories') as any)
+      const { data, error } = await supabase.from('laboratories')
         .select('*')
         .order('name', { ascending: true });
       if (error) throw error;
@@ -172,11 +172,11 @@ export function UsersPage() {
     queryKey: ['invites', user?.role, user?.laboratory],
     queryFn: async () => {
       // Columnas explícitas: temporary_password solo es accesible desde la Edge Function.
-      const { data, error } = await (supabase.from('invites') as any)
+      const { data, error } = await supabase.from('invites')
         .select('id, email, role, invited_by, laboratory, created_at, accepted_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data || []) as any[];
+      return data || [];
     },
     enabled: !!user && canManageUsers,
   });
@@ -184,7 +184,7 @@ export function UsersPage() {
   const { data: allOverrides = [] } = useQuery({
     queryKey: ['user-permissions', user?.role, user?.laboratory],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('user_permissions') as any).select('*');
+      const { data, error } = await supabase.from('user_permissions').select('*');
       if (error) throw error;
       return (data || []) as { user_id: string; action: string; granted: boolean }[];
     },
@@ -209,7 +209,7 @@ export function UsersPage() {
     mutationFn: async (name: string) => {
       const cleanName = name.trim();
       if (!cleanName) throw new Error('El nombre del laboratorio es obligatorio');
-      const { error } = await (supabase.from('laboratories') as any).insert([{
+      const { error } = await supabase.from('laboratories').insert([{
         name: cleanName,
         slug: slugifyLaboratory(cleanName),
         created_by: user!.id,
@@ -229,7 +229,7 @@ export function UsersPage() {
     mutationFn: async ({ userId, role, laboratory }: { userId: string; role: UserRole; laboratory: string }) => {
       const payload: Record<string, string> = { role };
       if (isSuperAdmin) payload.laboratory = laboratory;
-      const { error } = await (supabase.from('profiles') as any).update(payload).eq('id', userId);
+      const { error } = await supabase.from('profiles').update(payload).eq('id', userId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -456,7 +456,7 @@ export function UsersPage() {
         const granted = permState[p.action] ?? false;
         const defaultGranted = roleDefaults.includes(p.action);
         if (granted !== defaultGranted) {
-          const { error } = await (supabase.from('user_permissions') as any).upsert({
+          const { error } = await supabase.from('user_permissions').upsert({
             user_id: permEditUser.id,
             action: p.action,
             granted,
@@ -464,7 +464,7 @@ export function UsersPage() {
           }, { onConflict: 'user_id,action' });
           if (error) throw error;
         } else {
-          const { error } = await (supabase.from('user_permissions') as any)
+          const { error } = await supabase.from('user_permissions')
             .delete()
             .eq('user_id', permEditUser.id)
             .eq('action', p.action);

@@ -127,9 +127,11 @@ export interface Sample {
   position_column: number | null;
   position_label: string | null;
   laboratory: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
-  created_by: string;
+  created_by: string | null;
 }
 
 export interface SampleMovement {
@@ -150,8 +152,8 @@ export interface AuditLog {
   entity_type: AuditEntityType;
   entity_id: string;
   action: AuditAction;
-  old_values: Record<string, any> | null;
-  new_values: Record<string, any> | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
   created_at: string;
 }
 

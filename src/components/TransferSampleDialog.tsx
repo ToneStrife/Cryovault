@@ -38,7 +38,7 @@ export function TransferSampleDialog({ sample, open, onClose, onSuccess }: Trans
   const { data: boxes = [] } = useQuery({
     queryKey: ['transfer-boxes', freezerId],
     queryFn: async () => {
-      const { data, error: err } = await (supabase.from('boxes') as any)
+      const { data, error: err } = await supabase.from('boxes')
         .select('id, name, rows, columns, status, freezer_id')
         .eq('freezer_id', freezerId)
         .is('deleted_at', null)
@@ -54,7 +54,7 @@ export function TransferSampleDialog({ sample, open, onClose, onSuccess }: Trans
   const { data: boxSamples = [] } = useQuery({
     queryKey: ['transfer-box-samples', boxId],
     queryFn: async () => {
-      const { data, error: err } = await (supabase.from('samples') as any)
+      const { data, error: err } = await supabase.from('samples')
         .select('id, position_row, position_column')
         .eq('box_id', boxId)
         .is('deleted_at', null)

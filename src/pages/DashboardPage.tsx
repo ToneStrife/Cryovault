@@ -61,7 +61,7 @@ export function DashboardPage() {
     queryFn: async () => {
       const [freezersRes, boxesRes, sampleData] = await Promise.all([
         supabase.from('freezers').select('id', { count: 'exact', head: true }),
-        (supabase.from('boxes') as any).select('id', { count: 'exact', head: true }).is('deleted_at', null),
+        supabase.from('boxes').select('id', { count: 'exact', head: true }).is('deleted_at', null),
         fetchAllSamples<{ id: string; status: string; sample_type: string }>('id, status, sample_type'),
       ]);
       const activeSamples = sampleData.filter((s) => s.status === 'active').length;
@@ -109,7 +109,7 @@ export function DashboardPage() {
         .select('id, sample_code, sample_type, status, project, box_id, position_label, created_at')
         .order('created_at', { ascending: false })
         .limit(5);
-      return (data || []) as any[];
+      return data || [];
     },
     enabled: !!user,
   });
@@ -121,12 +121,12 @@ export function DashboardPage() {
       // Los caracteres , ( ) % y \ tienen significado en los filtros de PostgREST.
       const term = quickSearch.replace(/[,()%\\]/g, ' ').trim();
       if (term.length < 2) return [];
-      const { data } = await (supabase.from('samples') as any)
+      const { data } = await supabase.from('samples')
         .select('id, sample_code, sample_type, status, project, box_id, position_label, patient_code')
         .is('deleted_at', null)
         .or(`sample_code.ilike.%${term}%,patient_code.ilike.%${term}%,project.ilike.%${term}%`)
         .limit(8);
-      return (data || []) as any[];
+      return data || [];
     },
     enabled: quickSearch.length >= 2 && !!user,
   });

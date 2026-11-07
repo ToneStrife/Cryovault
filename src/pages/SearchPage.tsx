@@ -116,7 +116,7 @@ export function SearchPage() {
   const { data: boxes = [] } = useQuery({
     queryKey: ['boxes-search'],
     queryFn: async () => {
-      const { data } = await (supabase.from('boxes') as any)
+      const { data } = await supabase.from('boxes')
         .select('id, name, freezer_id')
         .is('deleted_at', null)
         .order('name');
@@ -154,7 +154,7 @@ export function SearchPage() {
     const lp = patientFilter.toLowerCase();
     return samples.filter((s) => {
       // Soft-delete filter
-      const isDeleted = !!(s as any).deleted_at;
+      const isDeleted = !!s.deleted_at;
       if (!showDeleted && isDeleted) return false;
 
       if (q && !(
@@ -296,7 +296,7 @@ export function SearchPage() {
         notes: editForm.notes.trim() || null,
         updated_at: new Date().toISOString(),
       };
-      const { error } = await (supabase.from('samples') as any).update(payload).eq('id', editTarget.id);
+      const { error } = await supabase.from('samples').update(payload).eq('id', editTarget.id);
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['samples-search'] }); closeEdit(); },
@@ -305,7 +305,7 @@ export function SearchPage() {
 
   const softDeleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await (supabase.from('samples') as any)
+      const { error } = await supabase.from('samples')
         .update({ deleted_at: new Date().toISOString(), deleted_by: user!.id })
         .in('id', ids);
       if (error) throw error;
@@ -315,7 +315,7 @@ export function SearchPage() {
 
   const restoreMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await (supabase.from('samples') as any)
+      const { error } = await supabase.from('samples')
         .update({ deleted_at: null, deleted_by: null })
         .in('id', ids);
       if (error) throw error;
@@ -340,7 +340,7 @@ export function SearchPage() {
       if (bulkApply.max_thaws) payload.max_thaws = parseInt(bulkForm.max_thaws) || 3;
       if (bulkApply.notes) payload.notes = bulkForm.notes.trim() || null;
       if (Object.keys(payload).length === 1) throw new Error('Selecciona al menos un campo');
-      const { error } = await (supabase.from('samples') as any).update(payload).in('id', selectedIds);
+      const { error } = await supabase.from('samples').update(payload).in('id', selectedIds);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -658,7 +658,7 @@ export function SearchPage() {
                   {filtered.map((s) => {
                     const boxEntry = s.box_id ? boxMap[s.box_id] : null;
                     const fz = boxEntry ? freezerMap[boxEntry.freezer_id] : null;
-                    const isDeleted = !!(s as any).deleted_at;
+                    const isDeleted = !!s.deleted_at;
                     return (
                       <tr
                         key={s.id}
@@ -864,7 +864,7 @@ export function SearchPage() {
                     <input type="checkbox" checked={!!bulkApply[key]} onChange={() => toggleBulkField(key)} className="rounded border-gray-300 text-blue-600" />
                     {label}
                   </span>
-                  <Input type={type} value={(bulkForm as any)[key]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
+                  <Input type={type} value={bulkForm[key as keyof typeof bulkForm]} onChange={(e) => bf(key as keyof typeof bulkForm, e.target.value)} disabled={!bulkApply[key]} className="disabled:opacity-40" />
                 </label>
               ))}
               <label className="space-y-1">

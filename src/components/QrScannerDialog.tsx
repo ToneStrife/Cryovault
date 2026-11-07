@@ -46,7 +46,7 @@ export function QrScannerDialog({ open, onClose }: Props) {
             // (si no, comas o paréntesis alterarían la consulta y un no-UUID daría error).
             const text = decodedText.trim();
             const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
-            const base = (supabase as any)
+            const base = supabase
               .from('boxes')
               .select('id, name, freezer_id')
               .is('deleted_at', null);

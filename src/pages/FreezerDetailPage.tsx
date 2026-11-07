@@ -384,7 +384,7 @@ export function FreezerDetailPage() {
   const { data: racks = [] } = useQuery({
     queryKey: ['racks', id],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('racks') as any).select('*').eq('freezer_id', id!).order('shelf_number', { ascending: true });
+      const { data, error } = await supabase.from('racks').select('*').eq('freezer_id', id!).order('shelf_number', { ascending: true });
       if (error) throw error;
       return data as Rack[];
     },
@@ -397,7 +397,7 @@ export function FreezerDetailPage() {
       const { data: rackRows, error: rackErr } = await supabase.from('racks').select('id').eq('freezer_id', id!);
       if (rackErr) throw rackErr;
       if (!rackRows?.length) return [] as RackZone[];
-      const { data, error } = await (supabase.from('rack_zones') as any)
+      const { data, error } = await supabase.from('rack_zones')
         .select('*')
         .in('rack_id', rackRows.map((r) => r.id))
         .order('sort_order', { ascending: true });
@@ -445,7 +445,7 @@ export function FreezerDetailPage() {
       if (editBox) {
         let imageUrl = editBox.image_url;
         if (imageFile) imageUrl = await uploadBoxImage(editBox.id);
-        const { error } = await (supabase.from('boxes') as any).update({
+        const { error } = await supabase.from('boxes').update({
           name: data.name.trim(),
           description: data.description.trim() || null,
           rows: parseInt(data.rows) || 9,
@@ -474,11 +474,11 @@ export function FreezerDetailPage() {
           image_url: null as string | null,
           created_by: user!.id,
         };
-        const { data: inserted, error } = await (supabase.from('boxes') as any).insert([payload]).select('id').single();
+        const { data: inserted, error } = await supabase.from('boxes').insert([payload]).select('id').single();
         if (error) throw error;
         if (imageFile) {
           const imageUrl = await uploadBoxImage(inserted.id);
-          await (supabase.from('boxes') as any).update({ image_url: imageUrl }).eq('id', inserted.id);
+          await supabase.from('boxes').update({ image_url: imageUrl }).eq('id', inserted.id);
         }
       }
     },
@@ -499,7 +499,7 @@ export function FreezerDetailPage() {
       rackId: string | null;
       rackShelfNumber: number | null;
     }) => {
-      const { error } = await (supabase.from('boxes') as any)
+      const { error } = await supabase.from('boxes')
         .update({ shelf_number: shelfNumber, rack_id: rackId, rack_shelf_number: rackShelfNumber })
         .eq('id', boxId);
       if (error) throw error;
@@ -576,7 +576,7 @@ export function FreezerDetailPage() {
 
   const renameFreezerZoneMutation = useMutation({
     mutationFn: async ({ zoneId, name }: { zoneId: string; name: string }) => {
-      const { error } = await (supabase.from('freezer_zones') as any)
+      const { error } = await supabase.from('freezer_zones')
         .update({ name, updated_at: new Date().toISOString() })
         .eq('id', zoneId);
       if (error) throw error;
@@ -586,7 +586,7 @@ export function FreezerDetailPage() {
 
   const renameRackZoneMutation = useMutation({
     mutationFn: async ({ zoneId, name }: { zoneId: string; name: string }) => {
-      const { error } = await (supabase.from('rack_zones') as any)
+      const { error } = await supabase.from('rack_zones')
         .update({ name, updated_at: new Date().toISOString() })
         .eq('id', zoneId);
       if (error) throw error;
@@ -599,9 +599,9 @@ export function FreezerDetailPage() {
       const active = freezerZones.find((z) => z.id === activeId);
       const over = freezerZones.find((z) => z.id === overId);
       if (!active || !over) return;
-      const { error: e1 } = await (supabase.from('freezer_zones') as any).update({ sort_order: over.sort_order }).eq('id', active.id);
+      const { error: e1 } = await supabase.from('freezer_zones').update({ sort_order: over.sort_order }).eq('id', active.id);
       if (e1) throw e1;
-      const { error: e2 } = await (supabase.from('freezer_zones') as any).update({ sort_order: active.sort_order }).eq('id', over.id);
+      const { error: e2 } = await supabase.from('freezer_zones').update({ sort_order: active.sort_order }).eq('id', over.id);
       if (e2) throw e2;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['freezer-zones', id] }),
@@ -614,9 +614,9 @@ export function FreezerDetailPage() {
       const active = zones.find((z) => z.id === activeId);
       const over = zones.find((z) => z.id === overId);
       if (!active || !over) return;
-      const { error: e1 } = await (supabase.from('rack_zones') as any).update({ sort_order: over.sort_order }).eq('id', active.id);
+      const { error: e1 } = await supabase.from('rack_zones').update({ sort_order: over.sort_order }).eq('id', active.id);
       if (e1) throw e1;
-      const { error: e2 } = await (supabase.from('rack_zones') as any).update({ sort_order: active.sort_order }).eq('id', over.id);
+      const { error: e2 } = await supabase.from('rack_zones').update({ sort_order: active.sort_order }).eq('id', over.id);
       if (e2) throw e2;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rack-zones', id] }),
@@ -648,30 +648,30 @@ export function FreezerDetailPage() {
         rackId = editRack.id;
         let imageUrl = editRack.image_url;
         if (rackImageFile) imageUrl = await uploadRackImage(editRack.id);
-        const { error } = await (supabase.from('racks') as any)
+        const { error } = await supabase.from('racks')
           .update({ ...payload, image_url: imageUrl })
           .eq('id', editRack.id);
         if (error) throw error;
 
-        const { error: boxesError } = await (supabase.from('boxes') as any)
+        const { error: boxesError } = await supabase.from('boxes')
           .update({ shelf_number: shelfNumber })
           .eq('rack_id', editRack.id);
         if (boxesError) throw boxesError;
 
         if (shelfCount === 1) {
-          const { error: clearRackShelfError } = await (supabase.from('boxes') as any)
+          const { error: clearRackShelfError } = await supabase.from('boxes')
             .update({ rack_shelf_number: null })
             .eq('rack_id', editRack.id);
           if (clearRackShelfError) throw clearRackShelfError;
         } else {
-          const { error: clampRackShelfError } = await (supabase.from('boxes') as any)
+          const { error: clampRackShelfError } = await supabase.from('boxes')
             .update({ rack_shelf_number: shelfCount })
             .eq('rack_id', editRack.id)
             .gt('rack_shelf_number', shelfCount);
           if (clampRackShelfError) throw clampRackShelfError;
         }
       } else {
-        const { data: inserted, error } = await (supabase.from('racks') as any)
+        const { data: inserted, error } = await supabase.from('racks')
           .insert([{ ...payload, freezer_id: id!, image_url: null, created_by: user!.id }])
           .select('id')
           .single();
@@ -679,7 +679,7 @@ export function FreezerDetailPage() {
         rackId = inserted.id;
         if (rackImageFile) {
           const imageUrl = await uploadRackImage(inserted.id);
-          const { error: imageError } = await (supabase.from('racks') as any)
+          const { error: imageError } = await supabase.from('racks')
             .update({ image_url: imageUrl })
             .eq('id', inserted.id);
           if (imageError) throw imageError;

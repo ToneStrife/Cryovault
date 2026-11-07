@@ -24,7 +24,7 @@ async function logMovement(params: {
   movedBy: string;
   notes?: string;
 }) {
-  const { error } = await (supabase.from('sample_movements') as any).insert([{
+  const { error } = await supabase.from('sample_movements').insert([{
     sample_id: params.sampleId,
     from_box_id: params.fromBoxId,
     to_box_id: params.toBoxId,
@@ -37,7 +37,7 @@ async function logMovement(params: {
 }
 
 async function assertCellFree(boxId: string, row: number, col: number, excludeSampleId?: string) {
-  const { data: occupant, error: checkErr } = await (supabase.from('samples') as any)
+  const { data: occupant, error: checkErr } = await supabase.from('samples')
     .select('id')
     .eq('box_id', boxId)
     .eq('position_row', row)
@@ -61,7 +61,7 @@ function warnMaxThaws(newThaws: number, maxThaws: number) {
 
 async function performCheckoutSample(s: Sample, userId: string) {
   const newThaws = s.thaw_count + 1;
-  const { error } = await (supabase.from('samples') as any)
+  const { error } = await supabase.from('samples')
     .update({
       status: 'in_use',
       thaw_count: newThaws,
@@ -103,7 +103,7 @@ async function performMoveSample(
   await assertCellFree(sample.box_id, toRow, toCol, sample.id);
 
   const label = positionLabel(toRow, toCol);
-  const { error } = await (supabase.from('samples') as any)
+  const { error } = await supabase.from('samples')
     .update({
       position_row: toRow,
       position_column: toCol,
@@ -135,7 +135,7 @@ async function performTransferSample(
 
   const label = positionLabel(toRow, toCol);
   const fromBoxId = sample.box_id;
-  const { error } = await (supabase.from('samples') as any)
+  const { error } = await supabase.from('samples')
     .update({
       box_id: toBoxId,
       position_row: toRow,
@@ -170,7 +170,7 @@ export async function performRemoveFromBox(sample: Sample, userId: string) {
     updates.status = 'active';
   }
 
-  const { error } = await (supabase.from('samples') as any)
+  const { error } = await supabase.from('samples')
     .update(updates)
     .eq('id', sample.id);
   if (error) throw error;
@@ -254,7 +254,7 @@ export function useSampleCheckout() {
       if (!sample.box_id) throw new Error('La muestra no está asociada a una caja');
       await assertCellFree(sample.box_id, row, col, sample.id);
       const label = positionLabel(row, col);
-      const { error } = await (supabase.from('samples') as any)
+      const { error } = await supabase.from('samples')
         .update({
           status: 'active',
           position_row: row,
@@ -292,7 +292,7 @@ export function useSampleCheckout() {
       if (!user) throw new Error('No autenticado');
       await assertCellFree(boxId, row, col, sample.id);
       const label = positionLabel(row, col);
-      const { error } = await (supabase.from('samples') as any)
+      const { error } = await supabase.from('samples')
         .update({
           box_id: boxId,
           position_row: row,
@@ -345,14 +345,14 @@ export function useSampleCheckout() {
   const checkoutBoxMutation = useMutation({
     mutationFn: async (boxId: string) => {
       if (!user) throw new Error('No autenticado');
-      const { data: samples, error: fetchErr } = await (supabase.from('samples') as any)
+      const { data: samples, error: fetchErr } = await supabase.from('samples')
         .select('id, thaw_count, max_thaws, position_label')
         .eq('box_id', boxId)
         .is('deleted_at', null);
       if (fetchErr) throw fetchErr;
       const list = (samples || []) as Pick<Sample, 'id' | 'thaw_count' | 'max_thaws' | 'position_label'>[];
 
-      const { error: boxErr } = await (supabase.from('boxes') as any)
+      const { error: boxErr } = await supabase.from('boxes')
         .update({ status: 'in_use', updated_at: new Date().toISOString() })
         .eq('id', boxId);
       if (boxErr) throw boxErr;
@@ -360,7 +360,7 @@ export function useSampleCheckout() {
       let maxWarning: { newThaws: number; maxThaws: number } | null = null;
       for (const s of list) {
         const newThaws = s.thaw_count + 1;
-        const { error } = await (supabase.from('samples') as any)
+        const { error } = await supabase.from('samples')
           .update({
             status: 'in_use',
             thaw_count: newThaws,
@@ -401,7 +401,7 @@ export function useSampleCheckout() {
   const returnBoxMutation = useMutation({
     mutationFn: async (boxId: string) => {
       if (!user) throw new Error('No autenticado');
-      const { error: samplesErr } = await (supabase.from('samples') as any)
+      const { error: samplesErr } = await supabase.from('samples')
         .update({
           status: 'active',
           updated_at: new Date().toISOString(),
@@ -410,7 +410,7 @@ export function useSampleCheckout() {
         .eq('status', 'in_use');
       if (samplesErr) throw samplesErr;
 
-      const { error: boxErr } = await (supabase.from('boxes') as any)
+      const { error: boxErr } = await supabase.from('boxes')
         .update({ status: 'active', updated_at: new Date().toISOString() })
         .eq('id', boxId);
       if (boxErr) throw boxErr;

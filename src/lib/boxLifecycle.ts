@@ -6,7 +6,7 @@ export interface BoxSampleCounts {
 }
 
 export async function getBoxSampleCounts(boxId: string): Promise<BoxSampleCounts> {
-  const { data, error } = await (supabase.from('samples') as any)
+  const { data, error } = await supabase.from('samples')
     .select('id, status')
     .eq('box_id', boxId)
     .is('deleted_at', null);
@@ -25,7 +25,7 @@ function boxStatusFromOccupancy(rows: number, columns: number, occupancy: number
 }
 
 export async function archiveBox(boxId: string) {
-  const { error } = await (supabase.from('boxes') as any)
+  const { error } = await supabase.from('boxes')
     .update({
       archived: true,
       status: 'archived',
@@ -37,13 +37,13 @@ export async function archiveBox(boxId: string) {
 }
 
 export async function unarchiveBox(boxId: string) {
-  const { data: box, error: fetchErr } = await (supabase.from('boxes') as any)
+  const { data: box, error: fetchErr } = await supabase.from('boxes')
     .select('rows, columns, occupancy')
     .eq('id', boxId)
     .single();
   if (fetchErr) throw fetchErr;
   const status = boxStatusFromOccupancy(box.rows, box.columns, box.occupancy);
-  const { error } = await (supabase.from('boxes') as any)
+  const { error } = await supabase.from('boxes')
     .update({
       archived: false,
       status,
@@ -55,7 +55,7 @@ export async function unarchiveBox(boxId: string) {
 }
 
 export async function softDeleteBoxWithSamples(boxId: string, userId: string) {
-  const { data: samples, error: selectErr } = await (supabase.from('samples') as any)
+  const { data: samples, error: selectErr } = await supabase.from('samples')
     .select('id')
     .eq('box_id', boxId)
     .is('deleted_at', null);
@@ -65,13 +65,13 @@ export async function softDeleteBoxWithSamples(boxId: string, userId: string) {
   const now = new Date().toISOString();
 
   if (sampleIds.length > 0) {
-    const { error: samplesErr } = await (supabase.from('samples') as any)
+    const { error: samplesErr } = await supabase.from('samples')
       .update({ deleted_at: now, deleted_by: userId })
       .in('id', sampleIds);
     if (samplesErr) throw samplesErr;
   }
 
-  const { error: boxErr } = await (supabase.from('boxes') as any)
+  const { error: boxErr } = await supabase.from('boxes')
     .update({
       deleted_at: now,
       deleted_by: userId,
@@ -81,7 +81,7 @@ export async function softDeleteBoxWithSamples(boxId: string, userId: string) {
     .eq('id', boxId);
   if (boxErr) throw boxErr;
 
-  const { error: auditErr } = await (supabase.from('audit_logs') as any).insert([{
+  const { error: auditErr } = await supabase.from('audit_logs').insert([{
     user_id: userId,
     entity_type: 'box',
     entity_id: boxId,
@@ -100,13 +100,13 @@ export async function softDeleteBoxWithSamples(boxId: string, userId: string) {
 
 export async function restoreBoxWithSamples(boxId: string, sampleIds: string[]) {
   if (sampleIds.length > 0) {
-    const { error: samplesErr } = await (supabase.from('samples') as any)
+    const { error: samplesErr } = await supabase.from('samples')
       .update({ deleted_at: null, deleted_by: null })
       .in('id', sampleIds);
     if (samplesErr) throw samplesErr;
   }
 
-  const { data: box, error: fetchErr } = await (supabase.from('boxes') as any)
+  const { data: box, error: fetchErr } = await supabase.from('boxes')
     .select('rows, columns, occupancy, archived')
     .eq('id', boxId)
     .single();
@@ -116,7 +116,7 @@ export async function restoreBoxWithSamples(boxId: string, sampleIds: string[]) 
     ? 'archived'
     : boxStatusFromOccupancy(box.rows, box.columns, box.occupancy);
 
-  const { error: boxErr } = await (supabase.from('boxes') as any)
+  const { error: boxErr } = await supabase.from('boxes')
     .update({
       deleted_at: null,
       deleted_by: null,

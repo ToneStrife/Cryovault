@@ -43,7 +43,7 @@ export function ProfilePage() {
       if (!firstName.trim()) throw new Error('El nombre es obligatorio');
 
       const full_name = joinFullName(firstName, lastName);
-      const { error } = await (supabase.from('profiles') as any)
+      const { error } = await supabase.from('profiles')
         .update({ full_name, updated_at: new Date().toISOString() })
         .eq('id', user.id);
 

@@ -7,7 +7,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Download, ArchiveRestore, RotateCcw } from 'lucide-react';
-import type { Sample, Freezer, Box } from '@/types';
+import type { Sample, Freezer, Box, AuditLog } from '@/types';
 import { formatAuditLog, makeUserMap } from '@/lib/auditFormat';
 import { canManageBoxes } from '@/lib/labPermissions';
 import { restoreBoxWithSamples, unarchiveBox, parseDeletedSampleIds } from '@/lib/boxLifecycle';
@@ -115,7 +115,7 @@ export function ReportsPage() {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
-      return (data || []) as any[];
+      return (data || []) as AuditLog[];
     },
     enabled: !!user,
   });

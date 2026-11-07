@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null
       }
       debug("[AuthContext] Profile fetched:", data?.id)
-      return data
+      return data as Profile | null
     } catch (e) {
       console.error("[AuthContext] Unexpected error fetching profile:", e)
       return null
