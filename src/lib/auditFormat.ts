@@ -1,4 +1,4 @@
-type AuditValues = Record<string, any> | null | undefined;
+type AuditValues = Record<string, unknown> | null | undefined;
 
 export type AuditLogLike = {
   user_id: string;
@@ -73,7 +73,7 @@ function shortId(id?: string | null) {
   return id ? `${String(id).slice(0, 8)}...` : 'sin id';
 }
 
-function displayValue(value: any) {
+function displayValue(value: unknown) {
   if (value === null || value === undefined || value === '') return 'vacio';
   if (typeof value === 'string' && /^[0-9a-f-]{32,}$/i.test(value)) return shortId(value);
   return String(value);

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import type { TablesUpdate } from '@/lib/database.types';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
 import { Input } from '@/components/ui/input';
@@ -107,7 +108,8 @@ export function SearchPage() {
   const { data: freezers = [] } = useQuery({
     queryKey: ['freezers-search'],
     queryFn: async () => {
-      const { data } = await supabase.from('freezers').select('id, name, temperature').order('name');
+      const { data, error } = await supabase.from('freezers').select('id, name, temperature').order('name');
+      if (error) throw error;
       return (data || []) as Pick<Freezer, 'id' | 'name' | 'temperature'>[];
     },
     enabled: !!user,
@@ -116,10 +118,11 @@ export function SearchPage() {
   const { data: boxes = [] } = useQuery({
     queryKey: ['boxes-search'],
     queryFn: async () => {
-      const { data } = await supabase.from('boxes')
+      const { data, error } = await supabase.from('boxes')
         .select('id, name, freezer_id')
         .is('deleted_at', null)
         .order('name');
+      if (error) throw error;
       return (data || []) as { id: string; name: string; freezer_id: string }[];
     },
     enabled: !!user,
@@ -300,7 +303,7 @@ export function SearchPage() {
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['samples-search'] }); closeEdit(); },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const softDeleteMutation = useMutation({
@@ -325,7 +328,7 @@ export function SearchPage() {
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+      const payload: TablesUpdate<'samples'> = { updated_at: new Date().toISOString() };
       if (bulkApply.patient_code) payload.patient_code = bulkForm.patient_code.trim() || null;
       if (bulkApply.subject_code) payload.subject_code = bulkForm.subject_code.trim() || null;
       if (bulkApply.project) payload.project = bulkForm.project.trim() || null;
@@ -349,7 +352,7 @@ export function SearchPage() {
       setBulkApply({});
       clearSelect();
     },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const filterSelectClass = `${selectClass} pl-3 pr-7 py-2 text-gray-700`;

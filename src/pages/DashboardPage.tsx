@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import { supabase } from '@/lib/supabase';
+import type { AuditLog } from '@/types';
 import { fetchAllSamples } from '@/lib/fetchAllRows';
 import { useAuth } from '@/context/AuthContext';
 import { AppLayout } from '@/components/AppLayout';
@@ -86,8 +87,9 @@ export function DashboardPage() {
   const activityQuery = useQuery({
     queryKey: ['recent-activity'],
     queryFn: async () => {
-      const { data } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(8);
-      return data || [];
+      const { data, error } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(8);
+      if (error) throw error;
+      return (data || []) as AuditLog[];
     },
     enabled: !!user,
   });
@@ -95,7 +97,8 @@ export function DashboardPage() {
   const { data: auditProfiles = [] } = useQuery({
     queryKey: ['audit-profiles-dashboard'],
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name, email');
+      const { data, error } = await supabase.from('profiles').select('id, full_name, email');
+      if (error) throw error;
       return (data || []) as { id: string; full_name: string | null; email: string | null }[];
     },
     enabled: !!user,
@@ -104,11 +107,12 @@ export function DashboardPage() {
   const recentSamplesQuery = useQuery({
     queryKey: ['recent-samples'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('samples')
         .select('id, sample_code, sample_type, status, project, box_id, position_label, created_at')
         .order('created_at', { ascending: false })
         .limit(5);
+      if (error) throw error;
       return data || [];
     },
     enabled: !!user,
@@ -121,25 +125,27 @@ export function DashboardPage() {
       // Los caracteres , ( ) % y \ tienen significado en los filtros de PostgREST.
       const term = quickSearch.replace(/[,()%\\]/g, ' ').trim();
       if (term.length < 2) return [];
-      const { data } = await supabase.from('samples')
+      const { data, error } = await supabase.from('samples')
         .select('id, sample_code, sample_type, status, project, box_id, position_label, patient_code')
         .is('deleted_at', null)
         .or(`sample_code.ilike.%${term}%,patient_code.ilike.%${term}%,project.ilike.%${term}%`)
         .limit(8);
+      if (error) throw error;
       return data || [];
     },
     enabled: quickSearch.length >= 2 && !!user,
   });
 
   // Fetch box names for search results
-  const boxIdsForSearch = [...new Set((quickSearchQuery.data || []).map((s: any) => s.box_id).filter(Boolean))];
+  const boxIdsForSearch = [...new Set((quickSearchQuery.data || []).map((s) => s.box_id).filter((id): id is string => !!id))];
   const boxNamesQuery = useQuery({
     queryKey: ['box-names-for-search', boxIdsForSearch],
     queryFn: async () => {
       if (boxIdsForSearch.length === 0) return {};
-      const { data } = await supabase.from('boxes').select('id, name, freezer_id').in('id', boxIdsForSearch);
+      const { data, error } = await supabase.from('boxes').select('id, name, freezer_id').in('id', boxIdsForSearch);
+      if (error) throw error;
       const map: Record<string, { name: string; freezer_id: string }> = {};
-      (data || []).forEach((b: any) => { map[b.id] = b; });
+      (data || []).forEach((b) => { map[b.id] = b; });
       return map;
     },
     enabled: boxIdsForSearch.length > 0,
@@ -206,8 +212,8 @@ export function DashboardPage() {
                     <div className="px-4 py-3 text-sm text-gray-400">Sin resultados</div>
                   ) : (
                     <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
-                      {(quickSearchQuery.data || []).map((s: any) => {
-                        const box = boxNamesQuery.data?.[s.box_id];
+                      {(quickSearchQuery.data || []).map((s) => {
+                        const box = s.box_id ? boxNamesQuery.data?.[s.box_id] : undefined;
                         return (
                           <button
                             key={s.id}
@@ -358,7 +364,7 @@ export function DashboardPage() {
                 ? Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-11 bg-gray-100 animate-pulse rounded-lg" />)
                 : recentSamplesQuery.data?.length === 0
                 ? <p className="text-gray-400 text-sm py-4 text-center">Sin muestras aún.</p>
-                : recentSamplesQuery.data?.map((s: any) => (
+                : recentSamplesQuery.data?.map((s) => (
                   <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-blue-50/50 transition-colors">
                     <div className="flex items-center gap-3">
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[s.status] || '#9ca3af' }} />
@@ -386,7 +392,7 @@ export function DashboardPage() {
                 ? Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-11 bg-gray-100 animate-pulse rounded-lg" />)
                 : activityQuery.data?.length === 0
                 ? <p className="text-gray-400 text-sm py-4 text-center">Sin actividad registrada.</p>
-                : activityQuery.data?.map((log: any) => {
+                : activityQuery.data?.map((log) => {
                   const formatted = formatAuditLog(log, makeUserMap(auditProfiles));
                   return (
                     <div key={log.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-gray-50">

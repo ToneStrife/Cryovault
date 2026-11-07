@@ -113,7 +113,8 @@ export function PlaceSampleDialog({ sample, open, onClose, onSuccess }: PlaceSam
       });
       onSuccess?.();
       handleClose();
-    } catch (e: any) {
+    } catch (err: unknown) {
+      const e = err instanceof Error ? err : new Error(String(err));
       setError(e.message || 'Error al colocar la muestra');
     }
   };

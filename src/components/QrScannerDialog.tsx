@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '@/lib/supabase';
 import { X, QrCode, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from 'lucide-react';
 
@@ -13,7 +14,7 @@ type ScanState = 'scanning' | 'found' | 'not_found' | 'error';
 export function QrScannerDialog({ open, onClose }: Props) {
   const navigate = useNavigate();
   const regionId = 'qr-scan-region';
-  const scannerRef = useRef<any>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const [state, setState] = useState<ScanState>('scanning');
   const [resultMsg, setResultMsg] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -27,7 +28,7 @@ export function QrScannerDialog({ open, onClose }: Props) {
     if (!open) return;
     setState('scanning');
 
-    let scanner: any;
+    let scanner: Html5Qrcode | undefined;
 
     async function start() {
       try {
@@ -40,7 +41,7 @@ export function QrScannerDialog({ open, onClose }: Props) {
           { fps: 10, qrbox: { width: 250, height: 250 } },
           async (decodedText: string) => {
             // Stop scanning immediately
-            try { await scanner.stop(); } catch { /* ya parado */ }
+            try { await scanner?.stop(); } catch { /* ya parado */ }
 
             // El texto del QR va a un filtro de PostgREST: solo se interpola si es un UUID
             // (si no, comas o paréntesis alterarían la consulta y un no-UUID daría error).
@@ -77,9 +78,9 @@ export function QrScannerDialog({ open, onClose }: Props) {
           },
           () => { /* ignore scan failures */ }
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         setState('error');
-        setResultMsg(err?.message || 'No se pudo acceder a la cámara');
+        setResultMsg(err instanceof Error ? err.message : 'No se pudo acceder a la cámara');
       }
     }
 

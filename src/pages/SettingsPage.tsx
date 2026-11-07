@@ -120,11 +120,12 @@ export function SettingsPage() {
   const { data: settings } = useQuery({
     queryKey: ['settings', user?.laboratory || 'default_lab'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('settings')
         .select('*')
         .eq('laboratory', user?.laboratory || 'default_lab')
         .maybeSingle();
+      if (error) throw error;
       return data as Settings | null;
     },
     enabled: !!user,

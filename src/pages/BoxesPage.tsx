@@ -247,7 +247,7 @@ export function BoxesPage() {
       queryClient.invalidateQueries({ queryKey: ['freezer-box-counts'] });
       closeAddDialog();
     },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const renameMutation = useMutation({

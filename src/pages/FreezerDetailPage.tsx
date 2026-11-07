@@ -487,7 +487,7 @@ export function FreezerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['freezer-box-counts'] });
       closeDialog();
     },
-    onError: (e: any) => setFormError(e.message),
+    onError: (e: Error) => setFormError(e.message),
   });
 
   const moveBoxMutation = useMutation({
@@ -510,7 +510,7 @@ export function FreezerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['all-boxes'] });
       queryClient.invalidateQueries({ queryKey: ['freezer-box-counts'] });
     },
-    onError: (e: any) => setMoveError(e.message),
+    onError: (e: Error) => setMoveError(e.message),
   });
 
   const addFreezerZoneMutation = useMutation({
@@ -605,7 +605,7 @@ export function FreezerDetailPage() {
       if (e2) throw e2;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['freezer-zones', id] }),
-    onError: (e: any) => setMoveError(e.message),
+    onError: (e: Error) => setMoveError(e.message),
   });
 
   const reorderRackZonesMutation = useMutation({
@@ -620,7 +620,7 @@ export function FreezerDetailPage() {
       if (e2) throw e2;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rack-zones', id] }),
-    onError: (e: any) => setMoveError(e.message),
+    onError: (e: Error) => setMoveError(e.message),
   });
 
   const saveRackMutation = useMutation({
@@ -700,7 +700,7 @@ export function FreezerDetailPage() {
       setRackImagePreview(null);
       setRackError('');
     },
-    onError: (e: any) => setRackError(e.message),
+    onError: (e: Error) => setRackError(e.message),
   });
 
   const openCreate = () => {

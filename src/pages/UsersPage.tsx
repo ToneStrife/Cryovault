@@ -222,7 +222,7 @@ export function UsersPage() {
       setLabName('');
       setLabError('');
     },
-    onError: (e: any) => setLabError(e.message),
+    onError: (e: Error) => setLabError(e.message),
   });
 
   const updateUserMutation = useMutation({
@@ -238,7 +238,7 @@ export function UsersPage() {
       setEditUser(null);
       setEditError('');
     },
-    onError: (e: any) => setEditError(e.message),
+    onError: (e: Error) => setEditError(e.message),
   });
 
   const inviteMutation = useMutation({
@@ -294,7 +294,7 @@ export function UsersPage() {
         });
       }
     },
-    onError: (e: any) => setInviteError(e.message),
+    onError: (e: Error) => setInviteError(e.message),
   });
 
   const getCredentialsMutation = useMutation({
@@ -473,14 +473,15 @@ export function UsersPage() {
       }
       queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
       setPermEditUser(null);
-    } catch (e: any) {
+    } catch (err: unknown) {
+      const e = err instanceof Error ? err : new Error(String(err));
       setPermError(e.message);
     } finally {
       setPermSaving(false);
     }
   };
 
-  const pendingInvites = invites.filter((i: any) => !i.accepted_at);
+  const pendingInvites = invites.filter((i) => !i.accepted_at);
 
   return (
     <AppLayout>
@@ -619,7 +620,7 @@ export function UsersPage() {
                 <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingInvites.length}</span>
               </div>
               <div className="divide-y divide-gray-50">
-                {pendingInvites.map((inv: any) => (
+                {pendingInvites.map((inv) => (
                   <div key={inv.id} className="px-6 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
@@ -629,7 +630,7 @@ export function UsersPage() {
                         <p className="text-sm font-medium text-gray-800">{inv.email}</p>
                         <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap">
                           <Clock className="w-3 h-3" />
-                          {new Date(inv.created_at).toLocaleDateString('es-ES')}
+                          {inv.created_at ? new Date(inv.created_at).toLocaleDateString('es-ES') : ''}
                           <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${ROLE_COLORS[inv.role as UserRole] || 'bg-gray-100 text-gray-500'}`}>
                             {ROLE_LABEL[inv.role as UserRole] || inv.role}
                           </span>

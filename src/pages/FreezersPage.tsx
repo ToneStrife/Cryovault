@@ -16,6 +16,7 @@ import {
   ChevronRight, ChevronLeft, Upload, X, Layers,
 } from 'lucide-react';
 import type { Freezer } from '@/types';
+import type { TablesInsert } from '@/lib/database.types';
 
 const TEMP_OPTIONS = [
   { label: '-80°C — Ultra-bajo (ULT)', value: -80 },
@@ -81,9 +82,10 @@ export function FreezersPage() {
   const { data: boxCounts = {} } = useQuery({
     queryKey: ['freezer-box-counts'],
     queryFn: async () => {
-      const { data } = await supabase.from('boxes').select('freezer_id').is('deleted_at', null);
+      const { data, error } = await supabase.from('boxes').select('freezer_id').is('deleted_at', null);
+      if (error) throw error;
       const counts: Record<string, number> = {};
-      (data || []).forEach((b: any) => { counts[b.freezer_id] = (counts[b.freezer_id] || 0) + 1; });
+      (data || []).forEach((b) => { counts[b.freezer_id] = (counts[b.freezer_id] || 0) + 1; });
       return counts;
     },
     enabled: !!user,
@@ -125,7 +127,7 @@ export function FreezersPage() {
           const imageUrl = await uploadImage(freezerId);
           await supabase.from('freezers').update({ image_url: imageUrl }).eq('id', freezerId);
         }
-        const rackInserts: any[] = [];
+        const rackInserts: TablesInsert<'racks'>[] = [];
         shelves.forEach((shelf, shelfIdx) => {
           shelf.racks.forEach((rack) => {
             if (rack.name.trim()) {
@@ -156,7 +158,7 @@ export function FreezersPage() {
       }
     },
     onSuccess: () => { setUploading(false); queryClient.invalidateQueries({ queryKey: ['freezers'] }); queryClient.invalidateQueries({ queryKey: ['racks'] }); closeDialog(); },
-    onError: (e: any) => { setUploading(false); setFormError(e.message); },
+    onError: (e: Error) => { setUploading(false); setFormError(e.message); },
   });
 
   const deleteMutation = useMutation({
